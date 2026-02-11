@@ -3,6 +3,7 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { getVersions, triggerIPC } from "@/lib";
 import { GetVersionsFn } from "@shared/types";
+import { registerIpcHandlers } from "./ipc";
 
 function createWindow(): void {
   // Create the browser window.
@@ -52,6 +53,8 @@ app.whenReady().then(() => {
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });
+
+  registerIpcHandlers();
 
   createWindow();
 

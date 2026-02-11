@@ -16,6 +16,31 @@ try {
       ipcRenderer.invoke("getVersions", ...args),
     triggerIPC: () => ipcRenderer.invoke("triggerIPC"),
   });
+
+  // Native API - accessible via window.api
+  contextBridge.exposeInMainWorld("api", {
+    fs: {
+      readFile: (filePath: string) => ipcRenderer.invoke("fs:readFile", filePath),
+      writeFile: (filePath: string, content: string) => ipcRenderer.invoke("fs:writeFile", filePath, content),
+      readDir: (dirPath: string) => ipcRenderer.invoke("fs:readDir", dirPath),
+    },
+    dialog: {
+      openFile: (options?: Electron.OpenDialogOptions) => ipcRenderer.invoke("dialog:openFile", options),
+      openDirectory: (options?: Electron.OpenDialogOptions) => ipcRenderer.invoke("dialog:openDirectory", options),
+      saveFile: (options?: Electron.SaveDialogOptions) => ipcRenderer.invoke("dialog:saveFile", options),
+    },
+    system: {
+      getInfo: () => ipcRenderer.invoke("system:getInfo"),
+      getPaths: () => ipcRenderer.invoke("system:getPaths"),
+    },
+    app: {
+      minimize: () => ipcRenderer.invoke("app:minimize"),
+      maximize: () => ipcRenderer.invoke("app:maximize"),
+      close: () => ipcRenderer.invoke("app:close"),
+      quit: () => ipcRenderer.invoke("app:quit"),
+      getVersion: () => ipcRenderer.invoke("app:getVersion"),
+    },
+  });
 } catch (error) {
   console.error("Error occured when establishing context bridge: ", error);
 }

@@ -1,18 +1,65 @@
+import React, { useState } from "react";
+import { BillingMethodPage } from "./features/onboarding/billing-method-page";
+import { AnthropicOnboardingPage } from "./features/onboarding/anthropic-onboarding-page";
+import { ApiKeyOnboardingPage } from "./features/onboarding/api-key-onboarding-page";
+import { SelectDirectoryPage } from "./features/onboarding/select-directory-page";
+import { Toaster } from "sonner";
+
+type OnboardingStep = "billing" | "anthropic-auth" | "api-key" | "select-directory" | "done";
+
 const App = () => {
+  const [step, setStep] = useState<OnboardingStep>("billing");
 
   return (
-      <div className="h-dvh flex flex-col bg-background text-foreground">
-        <div
-          className="shrink-0 h-10"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    <>
+      <Toaster richColors />
+      {step === "billing" && (
+        <BillingMethodPage
+          onContinue={(method) => {
+            if (method === "claude-subscription") {
+              setStep("anthropic-auth");
+            } else {
+              setStep("api-key");
+            }
+          }}
         />
+      )}
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto py-12 px-6 space-y-10">
-            <h1 className="text-4xl font-bold">Welcome to the app</h1>
+      {step === "anthropic-auth" && (
+        <AnthropicOnboardingPage
+          onBack={() => setStep("billing")}
+          onComplete={() => setStep("select-directory")}
+        />
+      )}
+
+      {step === "api-key" && (
+        <ApiKeyOnboardingPage
+          onBack={() => setStep("billing")}
+          onComplete={() => setStep("select-directory")}
+        />
+      )}
+
+      {step === "select-directory" && (
+        <SelectDirectoryPage
+          onComplete={(dir) => {
+            console.log("Selected directory:", dir);
+            setStep("done");
+          }}
+        />
+      )}
+
+      {step === "done" && (
+        <div className="h-dvh flex flex-col bg-background text-foreground">
+          <div
+            className="shrink-0 h-10"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          />
+          <div className="flex-1 flex items-center justify-center">
+            <h1 className="text-2xl font-semibold">You're all set!</h1>
           </div>
         </div>
-      </div>
+      )}
+    </>
   );
 };
 
