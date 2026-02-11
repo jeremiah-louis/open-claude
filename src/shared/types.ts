@@ -3,10 +3,12 @@ import { electronAPI } from "@electron-toolkit/preload";
 
 export type GetVersionsFn = () => Promise<typeof electronAPI.process.versions>;
 
+import type { AppErrorModel } from "./errors";
+
 export interface FileSystemResult<T = unknown> {
   success: boolean;
   data?: T;
-  error?: string;
+  error?: AppErrorModel;
 }
 
 export interface DirectoryEntry {

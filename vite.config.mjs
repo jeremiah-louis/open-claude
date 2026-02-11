@@ -8,7 +8,10 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["src/renderer/src/__test__/utils/index.ts"],
-    include: ["src/renderer/src/__test__/**/*.{test,spec}.{ts,tsx}"],
+    include: [
+      "src/renderer/src/__test__/**/*.{test,spec}.{ts,tsx}",
+      "src/shared/__test__/**/*.{test,spec}.ts",
+    ],
     coverage: {
       reporter: ["text", "json", "html"],
       exclude: [

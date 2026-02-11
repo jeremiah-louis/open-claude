@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+import { FileSystemError } from "../../shared/errors";
 
 export function registerFileSystemHandlers(): void {
   // File System Operations
@@ -10,7 +11,7 @@ export function registerFileSystemHandlers(): void {
       const content = await fs.readFile(filePath, "utf-8");
       return { success: true, data: content };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: FileSystemError.from(error, filePath).toModel() };
     }
   });
 
@@ -19,7 +20,7 @@ export function registerFileSystemHandlers(): void {
       await fs.writeFile(filePath, content, "utf-8");
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: FileSystemError.from(error, filePath).toModel() };
     }
   });
 
@@ -34,7 +35,7 @@ export function registerFileSystemHandlers(): void {
       }));
       return { success: true, data: items };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: FileSystemError.from(error, dirPath).toModel() };
     }
   });
 

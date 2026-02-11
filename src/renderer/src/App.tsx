@@ -9,7 +9,6 @@ type OnboardingStep = "billing" | "anthropic-auth" | "api-key" | "select-directo
 
 const App = () => {
   const [step, setStep] = useState<OnboardingStep>("billing");
-
   return (
     <>
       <Toaster richColors />

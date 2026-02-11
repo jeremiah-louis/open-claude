@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { ClaudeCodeIcon, IconSpinner } from "@/components/ui/icons"
+import { Logo } from "@/components/ui/logo"
 
 type AuthFlowState =
   | { step: "idle" }
@@ -221,6 +222,9 @@ export function AnthropicOnboardingPage({ onBack, onComplete }: AnthropicOnboard
             <div className="w-10 h-10 rounded-full bg-[#D97757] flex items-center justify-center">
               <ClaudeCodeIcon className="w-6 h-6 text-white" />
             </div>
+            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+              <Logo className="w-5 h-5" fill="white" animate={false} />
+            </div>
           </div>
           <div className="space-y-1">
             <h1 className="text-base font-semibold tracking-tight">
@@ -242,7 +246,7 @@ export function AnthropicOnboardingPage({ onBack, onComplete }: AnthropicOnboard
                   Existing Claude Code credentials found
                 </p>
                 {existingToken && (
-                  <pre className="mt-2 px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap break-words font-mono bg-background/60 rounded border border-border/60">
+                  <pre className="mt-2 px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap wrap-break-words font-mono bg-background/60 rounded border border-border/60">
                     {formatTokenPreview(existingToken)}
                   </pre>
                 )}
@@ -308,7 +312,7 @@ export function AnthropicOnboardingPage({ onBack, onComplete }: AnthropicOnboard
                   onChange={handleCodeChange}
                   onKeyDown={handleKeyDown}
                   placeholder="Paste your authentication code here..."
-                  className="font-mono text-center pr-10"
+                  className="font-mono text-xs text-center pr-10"
                   autoFocus
                   disabled={isSubmitting}
                 />
