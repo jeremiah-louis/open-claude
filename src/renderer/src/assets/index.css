@@ -1,0 +1,26 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+/* change theme by modifying the following import */
+@import "./theme.css";
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply flex items-center justify-center min-h-dvh text-foreground;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+}
+
+svg path {
+  fill: red;
+}
+
+body {
+  font-family: "Inter", sans-serif;
+}
