@@ -5,12 +5,102 @@
     <title></title>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:"
     />
+    <script>
+      (function () {
+        var stored = localStorage.getItem("theme")
+        var prefersDark = window.matchMedia(
+          "(prefers-color-scheme: dark)"
+        ).matches
+        var theme =
+          stored === "light"
+            ? "light"
+            : stored === "dark"
+              ? "dark"
+              : prefersDark
+                ? "dark"
+                : "light"
+        document.documentElement.classList.add(theme)
+      })()
+    </script>
+    <style>
+      :root {
+        --loading-bg: #ffffff;
+        --loading-logo: #a1a1aa;
+      }
+      .dark {
+        --loading-bg: #09090b;
+        --loading-logo: #71717a;
+      }
+      body {
+        margin: 0;
+        background: var(--loading-bg);
+      }
+      .loading-container {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--loading-bg);
+        z-index: 9999;
+        transition: opacity 300ms ease-out;
+      }
+      #root:not(:empty) ~ .loading-container {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .loading-logo {
+        width: 48px;
+        height: 48px;
+        animation: flywheel 3.5s ease-in-out infinite;
+      }
+      .loading-logo path {
+        fill: var(--loading-logo);
+      }
+      @keyframes flywheel {
+        0% {
+          transform: rotate(0deg);
+        }
+        80% {
+          transform: rotate(1080deg);
+        }
+        100% {
+          transform: rotate(1080deg);
+        }
+      }
+    </style>
   </head>
 
   <body>
     <div id="root"></div>
+    <div class="loading-container">
+      <svg
+        class="loading-logo"
+        viewBox="0 0 200 200"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <g transform="rotate(-45, 100, 100)">
+          <path
+            d="M100,100 C62,72 48,28 75,10 C88,0 98,12 100,26 C102,12 112,0 125,10 C152,28 138,72 100,100Z"
+          />
+          <path
+            d="M100,100 C62,72 48,28 75,10 C88,0 98,12 100,26 C102,12 112,0 125,10 C152,28 138,72 100,100Z"
+            transform="rotate(90, 100, 100)"
+          />
+          <path
+            d="M100,100 C62,72 48,28 75,10 C88,0 98,12 100,26 C102,12 112,0 125,10 C152,28 138,72 100,100Z"
+            transform="rotate(180, 100, 100)"
+          />
+          <path
+            d="M100,100 C62,72 48,28 75,10 C88,0 98,12 100,26 C102,12 112,0 125,10 C152,28 138,72 100,100Z"
+            transform="rotate(270, 100, 100)"
+          />
+        </g>
+      </svg>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
