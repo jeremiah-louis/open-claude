@@ -1,6 +1,6 @@
 import { useRef, useCallback, useLayoutEffect } from "react"
 
-const SCROLL_DURATION = 250
+const SCROLL_DURATION = 350
 
 function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3

@@ -151,19 +151,7 @@ const MermaidBlockInner = memo(function MermaidBlockInner({
 
       cleanupMermaidErrors()
 
-      const isParseError =
-        message.toLowerCase().includes("parse error") ||
-        message.toLowerCase().includes("syntax error") ||
-        message.toLowerCase().includes("expecting") ||
-        message.toLowerCase().includes("unexpected") ||
-        message.toLowerCase().includes("no diagram type detected") ||
-        message.toLowerCase().includes("lexical error")
-
-      if (isParseError && !lastRenderedCodeRef.current) {
-        setRenderState({ status: "parsing" })
-      } else {
-        setRenderState({ status: "error", message })
-      }
+      setRenderState({ status: "error", message })
     }
   }, [code, isDark])
 

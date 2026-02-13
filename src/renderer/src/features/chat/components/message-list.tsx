@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useRef, useLayoutEffect } from "react"
 import { MessageBubble } from "./message-bubble"
 import { ThinkingIndicator } from "./thinking-indicator"
 import { EmptyState } from "./empty-state"
@@ -24,6 +24,8 @@ export function MessageList({
   const { containerRef, scrollToBottom, requestScrollToNewMessage } =
     useAutoScroll(messages.length)
 
+  const spacerRef = useRef<HTMLDivElement>(null)
+
   // Expose requestScrollToNewMessage to parent synchronously at render time
   if (onSendScrollRef) {
     onSendScrollRef.current = requestScrollToNewMessage
@@ -32,11 +34,39 @@ export function MessageList({
   const isEmpty = messages.length === 0 && phase === "IDLE"
   const showThinking = phase === "WAITING"
 
+  // Dynamically size spacer so last user message stays pinned at viewport top.
+  // Runs on every content change (new messages, streaming chunks, phase transitions).
+  // Directly mutates the spacer DOM node to avoid React re-renders on each stream chunk.
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    const spacer = spacerRef.current
+    if (!el || !spacer) return
+
+    const userMessages = el.querySelectorAll<HTMLElement>(
+      '[data-message-role="user"]',
+    )
+    const lastUserMessage = userMessages[userMessages.length - 1]
+    if (!lastUserMessage) {
+      spacer.style.height = "0px"
+      return
+    }
+
+    const containerRect = el.getBoundingClientRect()
+    const messageRect = lastUserMessage.getBoundingClientRect()
+    const messageTop = messageRect.top - containerRect.top + el.scrollTop
+
+    const currentSpacerH = spacer.offsetHeight
+    const realContentHeight = el.scrollHeight - currentSpacerH
+    const needed = messageTop + el.clientHeight - realContentHeight
+
+    spacer.style.height = `${Math.max(0, needed)}px`
+  }, [messages, streamingContent, phase, containerRef])
+
   return (
     <div className="relative flex-1 min-h-0">
       <div
         ref={containerRef}
-        className={`h-full overflow-y-auto py-4 ${isEmpty ? "flex flex-col" : "space-y-4"}`}
+        className={`h-full overflow-y-auto scrollbar-none py-4 ${isEmpty ? "flex flex-col" : "space-y-4"}`}
       >
         {isEmpty ? (
           <EmptyState />
@@ -55,11 +85,11 @@ export function MessageList({
               )
             })}
             {showThinking && <ThinkingIndicator />}
-            {/* Bottom spacer — ensures enough scroll height so any message can reach the top */}
+            {/* Spacer — dynamically sized to keep the last user message pinned at viewport top */}
             <div
+              ref={spacerRef}
               data-scroll-spacer
               className="shrink-0 pointer-events-none"
-              style={{ height: "100%" }}
             />
           </>
         )}

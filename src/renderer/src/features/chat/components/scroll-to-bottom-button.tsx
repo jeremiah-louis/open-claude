@@ -56,7 +56,7 @@ export const ScrollToBottomButton = memo(function ScrollToBottomButton({
           exit={{ opacity: 0, y: 8 }}
           transition={{ duration: 0.15 }}
           onClick={onScrollToBottom}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center size-8 rounded-full bg-background border shadow-md hover:bg-accent transition-colors cursor-pointer"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center size-8 rounded-full bg-background border shadow-md hover:bg-accent transition-colors active:scale-95 cursor-pointer"
           aria-label="Scroll to bottom"
         >
           <ArrowDown className="size-4" />
