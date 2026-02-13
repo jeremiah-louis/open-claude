@@ -4,6 +4,7 @@ import { useState } from "react"
 import { ChevronLeft } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { IconSpinner, KeyFilledIcon } from "@/components/ui/icons"
+import { Logo } from "@/components/ui/logo"
 
 export type CustomClaudeConfig = {
   model: string
@@ -32,37 +33,51 @@ export function ApiKeyOnboardingPage({
 
   const [apiKey, setApiKey] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
 
   const handleBack = () => {
     onBack?.()
   }
 
-  // Submit API key
-  const submitApiKey = (key: string) => {
-    if (!isValidApiKey(key)) return
+  // Submit API key - validates via main process then sets it
+  const submitApiKey = async (key: string) => {
+    if (!isValidApiKey(key) || isSubmitting) return
 
     setIsSubmitting(true)
+    setError("")
 
-    const config: CustomClaudeConfig = {
-      model: defaultModel,
-      token: key.trim(),
-      baseUrl: defaultBaseUrl,
-    }
+    try {
+      const result = await window.claude.validateApiKey(key.trim())
 
-    // Mock submission - replace with actual API call later
-    setTimeout(() => {
-      onComplete?.(config)
+      if (result.success && result.data) {
+        await window.claude.setApiKey(key.trim())
+
+        const config: CustomClaudeConfig = {
+          model: defaultModel,
+          token: key.trim(),
+          baseUrl: defaultBaseUrl,
+        }
+        onComplete?.(config)
+      } else if (result.error?.message) {
+        setError(result.error.message)
+      } else {
+        setError("Invalid API key. Please check and try again.")
+      }
+    } catch {
+      setError("Could not validate API key. Check your connection.")
+    } finally {
       setIsSubmitting(false)
-    }, 1000)
+    }
   }
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setApiKey(value)
+    setError("")
 
     // Auto-submit if valid API key is pasted
     if (isValidApiKey(value)) {
-      setTimeout(() => submitApiKey(value), 100)
+      setTimeout(() => void submitApiKey(value), 100)
     }
   }
 
@@ -94,6 +109,9 @@ export function ApiKeyOnboardingPage({
           <div className="flex items-center justify-center gap-2 p-2 mx-auto w-max rounded-full border border-border">
             <div className="w-10 h-10 rounded-full bg-foreground flex items-center justify-center">
               <KeyFilledIcon className="w-5 h-5 text-background" />
+            </div>
+            <div className="w-10 h-10 rounded-full bg-green-400 flex items-center justify-center">
+              <Logo className="w-6 h-6 text-background" animate={false} />
             </div>
           </div>
           <div className="space-y-1">
@@ -132,9 +150,13 @@ export function ApiKeyOnboardingPage({
               </div>
             )}
           </div>
-          <p className="text-xs text-muted-foreground text-center">
-            Your API key starts with sk-ant-
-          </p>
+          {error ? (
+            <p className="text-xs text-red-500 text-center">{error}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center">
+              Your API key starts with sk-ant-
+            </p>
+          )}
         </div>
       </div>
     </div>

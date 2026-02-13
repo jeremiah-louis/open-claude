@@ -17,6 +17,36 @@ try {
     triggerIPC: () => ipcRenderer.invoke("triggerIPC"),
   });
 
+  // Claude API - accessible via window.claude
+  contextBridge.exposeInMainWorld("claude", {
+    sendMessage: (messages: unknown[], options?: unknown) =>
+      ipcRenderer.invoke("claude:send-message", messages, options),
+
+    setApiKey: (apiKey: string) => ipcRenderer.invoke("claude:set-api-key", apiKey),
+
+    hasStoredApiKey: () => ipcRenderer.invoke("claude:has-stored-api-key"),
+
+    validateApiKey: (apiKey: string) => ipcRenderer.invoke("claude:validate-api-key", apiKey),
+
+    streamMessage: (messages: unknown[], options?: unknown) =>
+      ipcRenderer.send("claude:stream-message", messages, options),
+
+    onStreamChunk: (callback: (chunk: unknown) => void) =>
+      ipcRenderer.on("claude:stream-chunk", (_event, chunk) => callback(chunk)),
+
+    onStreamEnd: (callback: () => void) =>
+      ipcRenderer.on("claude:stream-end", () => callback()),
+
+    onStreamError: (callback: (error: unknown) => void) =>
+      ipcRenderer.on("claude:stream-error", (_event, error) => callback(error)),
+
+    removeStreamListeners: () => {
+      ipcRenderer.removeAllListeners("claude:stream-chunk");
+      ipcRenderer.removeAllListeners("claude:stream-end");
+      ipcRenderer.removeAllListeners("claude:stream-error");
+    },
+  });
+
   // Native API - accessible via window.api
   contextBridge.exposeInMainWorld("api", {
     fs: {

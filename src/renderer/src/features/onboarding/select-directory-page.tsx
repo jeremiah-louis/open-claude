@@ -61,8 +61,8 @@ export function SelectDirectoryPage({ onComplete }: SelectDirectoryPageProps) {
         {/* Header */}
         <div className="text-center space-y-4">
           <div className="flex items-center justify-center mx-auto w-max">
-            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-              <Logo className="w-6 h-6" fill="white" />
+            <div className="w-12 h-12 rounded-full bg-green-400 flex items-center justify-center">
+              <Logo className="w-6 h-6" fill="white" animate={false} />
             </div>
           </div>
           <div className="space-y-1">

@@ -1,48 +1,40 @@
-import React, { useState } from "react";
-import { BillingMethodPage } from "./features/onboarding/billing-method-page";
-import { AnthropicOnboardingPage } from "./features/onboarding/anthropic-onboarding-page";
+import React, { useState, useEffect } from "react";
 import { ApiKeyOnboardingPage } from "./features/onboarding/api-key-onboarding-page";
 import { SelectDirectoryPage } from "./features/onboarding/select-directory-page";
 import { ChatPage } from "./features/chat";
 import { Toaster } from "sonner";
 
 // Set to true to show the chat demo page
-const SHOW_DEMO = true;
+const SHOW_DEMO = false;
 
-type OnboardingStep = "billing" | "anthropic-auth" | "api-key" | "select-directory" | "done";
+type OnboardingStep = "loading" | "api-key" | "select-directory" | "done";
 
 const App = () => {
-  const [step, setStep] = useState<OnboardingStep>("billing");
+  const [step, setStep] = useState<OnboardingStep>("loading");
+
+  useEffect(() => {
+    window.claude.hasStoredApiKey().then((result) => {
+      if (result.success && result.data) {
+        setStep("select-directory");
+      } else {
+        setStep("api-key");
+      }
+    });
+  }, []);
 
   if (SHOW_DEMO) {
     return <ChatPage />;
   }
 
+  if (step === "loading") {
+    return <div className="h-dvh bg-background" />;
+  }
+
   return (
     <>
       <Toaster richColors />
-      {step === "billing" && (
-        <BillingMethodPage
-          onContinue={(method) => {
-            if (method === "claude-subscription") {
-              setStep("anthropic-auth");
-            } else {
-              setStep("api-key");
-            }
-          }}
-        />
-      )}
-
-      {step === "anthropic-auth" && (
-        <AnthropicOnboardingPage
-          onBack={() => setStep("billing")}
-          onComplete={() => setStep("select-directory")}
-        />
-      )}
-
       {step === "api-key" && (
         <ApiKeyOnboardingPage
-          onBack={() => setStep("billing")}
           onComplete={() => setStep("select-directory")}
         />
       )}

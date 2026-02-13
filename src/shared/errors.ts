@@ -4,14 +4,14 @@
 export enum ErrorCategory {
   CLIENT = "CLIENT",
   FILE_SYSTEM = "FILE_SYSTEM",
-  // NETWORK = "NETWORK",  ← uncomment when needed
+  CLAUDE_API = "CLAUDE_API",
 }
 
 // ---------------------------------------------------------------------------
 // Numeric error codes grouped by category
 //   CLIENT      1xxx
 //   FILE_SYSTEM 2xxx
-//   NETWORK     3xxx  (reserved)
+//   CLAUDE_API  3xxx
 // ---------------------------------------------------------------------------
 export enum ErrorCode {
   // Client
@@ -25,6 +25,15 @@ export enum ErrorCode {
   FS_WRITE = 2002,
   FS_NOT_FOUND = 2003,
   FS_PERMISSION_DENIED = 2004,
+
+  // Claude API
+  API_UNKNOWN = 3000,
+  API_KEY_INVALID = 3001,
+  API_KEY_NOT_SET = 3002,
+  API_RATE_LIMITED = 3003,
+  API_OVERLOADED = 3004,
+  API_NETWORK = 3005,
+  API_MAX_TOKENS = 3006,
 }
 
 // ---------------------------------------------------------------------------
@@ -114,5 +123,39 @@ export class ClientError extends AppError {
   constructor(message: string, code: ErrorCode, path: string, options?: { cause?: unknown }) {
     super(message, code, ErrorCategory.CLIENT, path, options);
     this.name = "ClientError";
+  }
+}
+
+export class ClaudeApiError extends AppError {
+  constructor(message: string, code: ErrorCode, path: string, options?: { cause?: unknown }) {
+    super(message, code, ErrorCategory.CLAUDE_API, path, options);
+    this.name = "ClaudeApiError";
+  }
+
+  /**
+   * Build a ClaudeApiError from a raw caught error, mapping Anthropic SDK
+   * HTTP status codes to the appropriate ErrorCode automatically.
+   */
+  static from(error: unknown, path: string): ClaudeApiError {
+    // Anthropic SDK errors expose a `status` property
+    const raw = error as { status?: number; message?: string };
+    const message = raw?.message ?? "Unknown Claude API error";
+
+    let code: ErrorCode;
+    switch (raw?.status) {
+      case 401:
+        code = ErrorCode.API_KEY_INVALID;
+        break;
+      case 429:
+        code = ErrorCode.API_RATE_LIMITED;
+        break;
+      case 529:
+        code = ErrorCode.API_OVERLOADED;
+        break;
+      default:
+        code = ErrorCode.API_UNKNOWN;
+    }
+
+    return new ClaudeApiError(message, code, path, { cause: error });
   }
 }
