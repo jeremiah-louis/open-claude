@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from "react"
+import React, { useRef, useState, useEffect } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { cn } from "@/utils"
@@ -89,17 +89,6 @@ export function ChatPage() {
     }
   }, [state.phase])
 
-  // Stable compileAndRun callback — must NOT be an inline arrow or
-  // handleCompile inside the orchestrator is recreated every render,
-  // causing the trigger effect to re-fire and exhaust retry attempts.
-  const stableCompileAndRun = useCallback(
-    async (code: string, diagram: string) => {
-      const diagramToUse = diagram || DEFAULT_LED_DIAGRAM
-      return simulation.compileAndRun(code, diagramToUse)
-    },
-    [simulation.compileAndRun],
-  )
-
   // Orchestrator: zero-click compile-and-run pipeline
   const { pipelinePhase, debugAttempt } = useOrchestrator({
     chatPhase: state.phase,
@@ -107,7 +96,10 @@ export function ChatPage() {
     code: persistedCode,
     diagramJson: persistedDiagram,
     codeComplete: persistedCodeComplete,
-    compileAndRun: stableCompileAndRun,
+    compileAndRun: async (code, diagram) => {
+      const diagramToUse = diagram || DEFAULT_LED_DIAGRAM
+      return simulation.compileAndRun(code, diagramToUse)
+    },
     sendMessage,
     canSend: canSendProgrammatic,
   })
@@ -313,30 +305,17 @@ function TabbedPanel({
   return (
     <div className="h-full flex flex-col">
       {/* Tab bar */}
-      <div className="shrink-0 flex items-center border-b border-border bg-muted/30 px-2 py-1.5">
-        <div className="flex items-center bg-background/80 rounded-lg p-0.5">
-          <TabButton
-            active={activeTab === "preview"}
-            onClick={() => onTabChange("preview")}
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            }
-          />
-          <TabButton
-            active={activeTab === "code"}
-            onClick={() => onTabChange("code")}
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 18 22 12 16 6" />
-                <polyline points="8 6 2 12 8 18" />
-                <line x1="14" y1="4" x2="10" y2="20" />
-              </svg>
-            }
-          />
-        </div>
+      <div className="shrink-0 flex items-center border-b border-border bg-muted/30">
+        <TabButton
+          active={activeTab === "code"}
+          onClick={() => onTabChange("code")}
+          label="Code"
+        />
+        <TabButton
+          active={activeTab === "preview"}
+          onClick={() => onTabChange("preview")}
+          label="Preview"
+        />
 
         {/* Simulation controls */}
         <div className="ml-auto flex items-center gap-1 pr-2">
@@ -396,23 +375,23 @@ function TabbedPanel({
 function TabButton({
   active,
   onClick,
-  icon,
+  label,
 }: {
   active: boolean
   onClick: () => void
-  icon: React.ReactNode
+  label: string
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "p-1.5 rounded-md transition-colors",
+        "px-4 py-2 text-xs font-medium transition-colors",
         active
-          ? "bg-muted text-foreground"
+          ? "text-foreground border-b-2 border-primary"
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      {icon}
+      {label}
     </button>
   )
 }
