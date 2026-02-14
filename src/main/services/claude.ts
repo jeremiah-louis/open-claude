@@ -15,7 +15,7 @@ export interface SendMessageOptions {
 }
 
 const DEFAULT_MODEL = "claude-opus-4-6";
-const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 16384;
 
 let client: Anthropic | null = null;
 

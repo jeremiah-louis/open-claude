@@ -60,7 +60,7 @@ export function CircuitCanvas({
   }
 
   return (
-    <div ref={containerRef} className="h-full w-full relative overflow-auto bg-[#1a1a2e] p-4">
+    <div ref={containerRef} className="h-full w-full relative overflow-auto bg-[#f0f0f5] dark:bg-[#1a1a2e] p-4">
       {/* Status overlay */}
       {simulationPhase !== "IDLE" && (
         <div className="absolute top-2 right-2 z-10">
@@ -149,11 +149,11 @@ function WokwiElement({
 function StatusBadge({ phase }: { phase: SimulationPhase }) {
   const config: Record<SimulationPhase, { label: string; color: string }> = {
     IDLE: { label: "", color: "" },
-    COMPILING: { label: "Compiling...", color: "bg-yellow-500/20 text-yellow-400" },
-    COMPILE_ERROR: { label: "Error", color: "bg-red-500/20 text-red-400" },
-    LOADING: { label: "Loading...", color: "bg-blue-500/20 text-blue-400" },
-    RUNNING: { label: "Running", color: "bg-green-500/20 text-green-400" },
-    STOPPED: { label: "Stopped", color: "bg-gray-500/20 text-gray-400" },
+    COMPILING: { label: "Compiling...", color: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400" },
+    COMPILE_ERROR: { label: "Error", color: "bg-red-500/20 text-red-600 dark:text-red-400" },
+    LOADING: { label: "Loading...", color: "bg-blue-500/20 text-blue-600 dark:text-blue-400" },
+    RUNNING: { label: "Running", color: "bg-green-500/20 text-green-600 dark:text-green-400" },
+    STOPPED: { label: "Stopped", color: "bg-gray-500/20 text-gray-600 dark:text-gray-400" },
   }
 
   const { label, color } = config[phase]

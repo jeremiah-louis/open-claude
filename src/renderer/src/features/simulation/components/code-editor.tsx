@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect } from "react"
 import Editor, { loader, type OnMount } from "@monaco-editor/react"
 import * as monaco from "monaco-editor"
 import type { editor as monacoEditor } from "monaco-editor"
@@ -8,6 +8,7 @@ import {
   arduinoLanguageConfig,
   arduinoLanguageDef,
 } from "../languages/arduino-language"
+import { useTheme } from "@/hooks/use-theme"
 
 // Configure Monaco workers and use locally bundled instance (CSP blocks CDN)
 self.MonacoEnvironment = {
@@ -34,10 +35,16 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ code, isStreaming, onCodeChange }: CodeEditorProps) {
+  const { theme } = useTheme()
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null)
   const isProgrammaticRef = useRef(false)
   const onCodeChangeRef = useRef(onCodeChange)
   onCodeChangeRef.current = onCodeChange
+  const preRef = useRef<HTMLPreElement>(null)
+
+  // Keep a ref to the latest code so the mount handler can access it
+  const codeRef = useRef(code)
+  codeRef.current = code
 
   const handleEditorMount: OnMount = (editor, monacoInstance) => {
     editorRef.current = editor
@@ -55,70 +62,109 @@ export function CodeEditor({ code, isStreaming, onCodeChange }: CodeEditorProps)
       onCodeChangeRef.current?.(value)
     })
 
-    // Push current code into editor on mount (catches content that arrived before mount)
-    if (code) {
+    // Push latest code into editor on mount (catches content that arrived while unmounted)
+    const latestCode = codeRef.current
+    if (latestCode) {
       isProgrammaticRef.current = true
-      model?.setValue(code)
+      model?.setValue(latestCode)
       isProgrammaticRef.current = false
     }
   }
 
-  // Push code changes into the editor via ref (never use the controlled `value` prop)
+  // When streaming ends, push the final code into Monaco
   useEffect(() => {
+    if (isStreaming) return
     const editor = editorRef.current
     if (!editor) return
-
     const model = editor.getModel()
     if (!model) return
-
-    if (model.getValue() === code) return
-
+    const currentValue = model.getValue()
+    if (currentValue === code) return
     isProgrammaticRef.current = true
-    if (isStreaming) {
-      // During streaming: use executeEdits to preserve undo stack and scroll position
-      const fullRange = model.getFullModelRange()
-      editor.executeEdits("streaming", [
-        { range: fullRange, text: code, forceMoveMarkers: true },
-      ])
-      editor.revealLine(model.getLineCount())
-    } else {
-      // After streaming: simple setValue
-      model.setValue(code)
-    }
+    model.setValue(code)
+    isProgrammaticRef.current = false
+  }, [isStreaming, code])
+
+  // For non-streaming code changes (e.g. user edits from outside, simulation code)
+  useEffect(() => {
+    if (isStreaming) return
+    const editor = editorRef.current
+    if (!editor) return
+    const model = editor.getModel()
+    if (!model) return
+    const currentValue = model.getValue()
+    if (currentValue === code) return
+    isProgrammaticRef.current = true
+    model.setValue(code)
     isProgrammaticRef.current = false
   }, [code, isStreaming])
 
-  // Toggle readOnly when streaming starts/stops
+  // Auto-scroll the <pre> to the bottom while streaming
   useEffect(() => {
-    editorRef.current?.updateOptions({ readOnly: isStreaming })
-  }, [isStreaming])
+    if (isStreaming && preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight
+    }
+  }, [code, isStreaming])
+
+  const isDark = theme === "dark"
 
   return (
-    <div className="h-full w-full">
-      <Editor
-        height="100%"
-        defaultLanguage="cpp"
-        theme="vs-dark"
-        onMount={handleEditorMount}
-        options={{
-          readOnly: isStreaming,
-          minimap: { enabled: false },
-          fontSize: 13,
-          lineNumbers: "on",
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 2,
-          wordWrap: "on",
-          padding: { top: 8 },
-          renderLineHighlight: "none",
-          overviewRulerLanes: 0,
-          hideCursorInOverviewRuler: true,
-          scrollbar: {
-            verticalScrollbarSize: 8,
-            horizontalScrollbarSize: 8,
-          },
-        }}
-      />
+    <div className="h-full w-full relative">
+      {/* Lightweight <pre> overlay while streaming — avoids Monaco overhead */}
+      {isStreaming && (
+        <div
+          className="absolute inset-0 z-10 overflow-hidden"
+          style={{
+            background: isDark ? "#1e1e1e" : "#fffffe",
+          }}
+        >
+          <pre
+            ref={preRef}
+            className="h-full overflow-y-auto m-0 px-[62px] py-2"
+            style={{
+              fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+              fontSize: 13,
+              lineHeight: "18px",
+              color: isDark ? "#d4d4d4" : "#1e1e1e",
+              tabSize: 2,
+              whiteSpace: "pre-wrap",
+              wordWrap: "break-word",
+            }}
+          >
+            {code}
+            <span className="inline-block w-[2px] h-[14px] ml-[1px] align-middle animate-pulse"
+              style={{ background: isDark ? "#d4d4d4" : "#1e1e1e" }}
+            />
+          </pre>
+        </div>
+      )}
+
+      {/* Monaco editor — always mounted but hidden during streaming */}
+      <div className={isStreaming ? "invisible h-full w-full" : "h-full w-full"}>
+        <Editor
+          height="100%"
+          defaultLanguage="cpp"
+          theme={isDark ? "vs-dark" : "light"}
+          onMount={handleEditorMount}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 13,
+            lineNumbers: "on",
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
+            wordWrap: "on",
+            padding: { top: 8 },
+            renderLineHighlight: "none",
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            scrollbar: {
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8,
+            },
+          }}
+        />
+      </div>
     </div>
   )
 }

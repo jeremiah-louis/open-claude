@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import type { ChatPhase } from "../chat/types"
+import type { SimulationPhase } from "../simulation/types"
 import { buildAutoDebugMessage } from "./auto-debug"
 
 export type PipelinePhase =
@@ -20,6 +21,7 @@ interface UseOrchestratorOptions {
   diagramJson: string
   /** Whether the code fence has been closed (complete sketch) */
   codeComplete: boolean
+  simulationPhase: SimulationPhase
   compileAndRun: (code: string, diagram: string) => Promise<{ success: boolean; error: string | null }>
   sendMessage: (content: string) => void
   canSend: boolean
@@ -31,6 +33,7 @@ export function useOrchestrator({
   code,
   diagramJson,
   codeComplete,
+  simulationPhase,
   compileAndRun,
   sendMessage,
   canSend,
@@ -110,6 +113,22 @@ export function useOrchestrator({
       handleCompile()
     }
   }, [wasStreaming, isNowReady, codeComplete, code, handleCompile])
+
+  // Sync pipeline phase with simulation phase (covers manual Run/Stop).
+  // Skip during auto-debug so the orchestrator keeps control of the flow.
+  useEffect(() => {
+    if (isAutoDebugRef.current) return
+
+    if (simulationPhase === "COMPILING" || simulationPhase === "LOADING") {
+      setPipelinePhase("compiling")
+    } else if (simulationPhase === "RUNNING") {
+      setPipelinePhase("running")
+    } else if (simulationPhase === "STOPPED" || simulationPhase === "IDLE") {
+      setPipelinePhase("idle")
+    } else if (simulationPhase === "COMPILE_ERROR") {
+      setPipelinePhase("error")
+    }
+  }, [simulationPhase])
 
   // Reset pipeline when user sends a new message (not auto-debug).
   // Check both SENDING and WAITING because React 18 batching may skip

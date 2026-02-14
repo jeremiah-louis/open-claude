@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { cn } from "@/utils"
+import { Eye, Code } from "lucide-react"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import { MessageList } from "./message-list"
 import { ChatInput } from "./chat-input"
@@ -96,6 +97,7 @@ export function ChatPage() {
     code: persistedCode,
     diagramJson: persistedDiagram,
     codeComplete: persistedCodeComplete,
+    simulationPhase: simulation.state.phase,
     compileAndRun: async (code, diagram) => {
       const diagramToUse = diagram || DEFAULT_LED_DIAGRAM
       return simulation.compileAndRun(code, diagramToUse)
@@ -306,16 +308,30 @@ function TabbedPanel({
     <div className="h-full flex flex-col">
       {/* Tab bar */}
       <div className="shrink-0 flex items-center border-b border-border bg-muted/30">
-        <TabButton
-          active={activeTab === "code"}
-          onClick={() => onTabChange("code")}
-          label="Code"
-        />
-        <TabButton
-          active={activeTab === "preview"}
-          onClick={() => onTabChange("preview")}
-          label="Preview"
-        />
+        <div className="flex items-center ml-2 my-1.5 rounded-lg bg-muted p-0.5">
+          <button
+            onClick={() => onTabChange("preview")}
+            className={cn(
+              "flex items-center justify-center w-8 h-7 rounded-md transition-colors",
+              activeTab === "preview"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onTabChange("code")}
+            className={cn(
+              "flex items-center justify-center w-8 h-7 rounded-md transition-colors",
+              activeTab === "code"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Code className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Simulation controls */}
         <div className="ml-auto flex items-center gap-1 pr-2">
@@ -372,26 +388,3 @@ function TabbedPanel({
   )
 }
 
-function TabButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  label: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "px-4 py-2 text-xs font-medium transition-colors",
-        active
-          ? "text-foreground border-b-2 border-primary"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {label}
-    </button>
-  )
-}
