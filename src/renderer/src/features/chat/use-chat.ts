@@ -1,34 +1,36 @@
 import { useReducer, useCallback, useRef, useEffect } from "react"
 import { chatReducer, initialChatState } from "./chat-reducer"
-import { selectMockResponse, isErrorResponse } from "./mock-responses"
+import { streamMessage } from "./services/claude"
+import type { ChatMessage as ServiceChatMessage } from "./services/claude"
+import type { AppErrorModel } from "@shared/errors"
 
-const TOKEN_DELAY_MS = 15
-const WAITING_DELAY_MS = 600
 const RENDER_SETTLE_MS = 100
 
 export function useChat() {
   const [state, dispatch] = useReducer(chatReducer, initialChatState)
-  const streamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const waitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const abortRef = useRef(false)
+
+  // Keep a ref to the latest state so stable callbacks can read current messages
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  // Ref to the stream cleanup function returned by streamMessage
+  const cleanupRef = useRef<(() => void) | null>(null)
+  const renderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (streamTimerRef.current) clearTimeout(streamTimerRef.current)
-      if (waitTimerRef.current) clearTimeout(waitTimerRef.current)
+      cleanupRef.current?.()
+      if (renderTimerRef.current) clearTimeout(renderTimerRef.current)
     }
   }, [])
 
   const cancelStreaming = useCallback(() => {
-    abortRef.current = true
-    if (streamTimerRef.current) {
-      clearTimeout(streamTimerRef.current)
-      streamTimerRef.current = null
-    }
-    if (waitTimerRef.current) {
-      clearTimeout(waitTimerRef.current)
-      waitTimerRef.current = null
+    cleanupRef.current?.()
+    cleanupRef.current = null
+    if (renderTimerRef.current) {
+      clearTimeout(renderTimerRef.current)
+      renderTimerRef.current = null
     }
     dispatch({ type: "CANCEL_STREAMING" })
   }, [])
@@ -37,10 +39,19 @@ export function useChat() {
     const trimmed = content.trim()
     if (!trimmed) return
 
+    // Reject sends while a stream is active — only the stop button should cancel
+    const currentPhase = stateRef.current.phase
+    if (
+      currentPhase === "SENDING" ||
+      currentPhase === "WAITING" ||
+      currentPhase === "STREAMING" ||
+      currentPhase === "RENDERING"
+    ) return
+
     // Cancel any in-progress stream before starting a new one
-    if (streamTimerRef.current) clearTimeout(streamTimerRef.current)
-    if (waitTimerRef.current) clearTimeout(waitTimerRef.current)
-    abortRef.current = true
+    cleanupRef.current?.()
+    cleanupRef.current = null
+    if (renderTimerRef.current) clearTimeout(renderTimerRef.current)
 
     const userMessageId = crypto.randomUUID()
     const assistantMessageId = crypto.randomUUID()
@@ -48,6 +59,14 @@ export function useChat() {
     // Finalize any in-progress streaming before submitting new message
     dispatch({ type: "STREAM_COMPLETE" })
     dispatch({ type: "RENDER_COMPLETE" })
+
+    // Build conversation history from current completed messages + new user message
+    const history: ServiceChatMessage[] = [
+      ...stateRef.current.messages
+        .filter((m) => m.status === "complete")
+        .map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: trimmed },
+    ]
 
     // IDLE/READY → VALIDATING
     dispatch({
@@ -58,56 +77,58 @@ export function useChat() {
     // VALIDATING → SENDING
     dispatch({ type: "MESSAGE_SENT" })
 
-    // SENDING → WAITING (adds assistant placeholder)
+    // SENDING → WAITING (adds assistant placeholder, shows "Thinking...")
     dispatch({ type: "START_WAITING", payload: { messageId: assistantMessageId } })
 
-    const mockResponse = selectMockResponse(trimmed)
-    abortRef.current = false
+    // Track whether we've transitioned to STREAMING yet
+    let hasStartedStreaming = false
 
-    // Simulate "thinking" delay then start streaming
-    waitTimerRef.current = setTimeout(() => {
-      if (abortRef.current) return
-
-      // Check for simulated error
-      if (isErrorResponse(mockResponse)) {
-        dispatch({ type: "ERROR", payload: "Something went wrong. The API returned an unexpected error." })
-        return
-      }
-
-      // WAITING → STREAMING
-      dispatch({ type: "START_STREAMING" })
-
-      const fullContent = mockResponse.content
-      const delay = mockResponse.streamDelayMs ?? TOKEN_DELAY_MS
-      let charIndex = 0
-
-      const streamNextChunk = () => {
-        if (abortRef.current || charIndex >= fullContent.length) {
-          if (!abortRef.current) {
-            // STREAMING → RENDERING
-            dispatch({ type: "STREAM_COMPLETE" })
-            streamTimerRef.current = setTimeout(() => {
-              // RENDERING → READY
-              dispatch({ type: "RENDER_COMPLETE" })
-            }, RENDER_SETTLE_MS)
-          }
-          return
+    const cleanup = streamMessage(history, {}, {
+      onChunk: (chunk) => {
+        const event = chunk as {
+          type: string
+          delta?: { type: string; text?: string }
         }
 
-        // Variable chunk size (1-4 chars) for natural feel
-        const chunkSize = Math.min(
-          1 + Math.floor(Math.random() * 3),
-          fullContent.length - charIndex,
-        )
-        const chunk = fullContent.slice(charIndex, charIndex + chunkSize)
-        charIndex += chunkSize
+        if (
+          event.type === "content_block_delta" &&
+          event.delta?.type === "text_delta" &&
+          event.delta.text
+        ) {
+          // Transition WAITING → STREAMING on first text chunk
+          if (!hasStartedStreaming) {
+            dispatch({ type: "START_STREAMING" })
+            hasStartedStreaming = true
+          }
+          dispatch({ type: "STREAM_TOKEN", payload: event.delta.text })
+        }
+      },
 
-        dispatch({ type: "STREAM_TOKEN", payload: chunk })
-        streamTimerRef.current = setTimeout(streamNextChunk, delay)
-      }
+      onEnd: () => {
+        // Handle edge case where stream ends without any text chunks
+        if (!hasStartedStreaming) {
+          dispatch({ type: "START_STREAMING" })
+        }
+        dispatch({ type: "STREAM_COMPLETE" })
+        renderTimerRef.current = setTimeout(() => {
+          dispatch({ type: "RENDER_COMPLETE" })
+        }, RENDER_SETTLE_MS)
+        // Remove IPC listeners so they don't stack on the next message
+        cleanupRef.current?.()
+        cleanupRef.current = null
+      },
 
-      streamNextChunk()
-    }, WAITING_DELAY_MS)
+      onError: (error) => {
+        const errorModel = error as AppErrorModel
+        const message = errorModel?.message ?? "An unexpected error occurred."
+        dispatch({ type: "ERROR", payload: message })
+        // Remove IPC listeners so they don't stack on the next message
+        cleanupRef.current?.()
+        cleanupRef.current = null
+      },
+    })
+
+    cleanupRef.current = cleanup
   }, [])
 
   const setInput = useCallback((value: string) => {

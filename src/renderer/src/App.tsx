@@ -5,7 +5,7 @@ import { ChatPage } from "./features/chat";
 import { Toaster } from "sonner";
 
 // Set to true to show the chat demo page
-const SHOW_DEMO = false;
+const SHOW_DEMO = true;
 
 type OnboardingStep = "loading" | "api-key" | "select-directory" | "done";
 

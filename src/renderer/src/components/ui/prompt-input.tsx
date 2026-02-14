@@ -150,9 +150,9 @@ const PromptInputTextareaInner = (
     // Prevent submission during IME composition (e.g., Chinese/Japanese/Korean input)
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      if (!isLoading) {
-        onSubmit?.()
-      }
+      // Do nothing while a stream is active — only the stop button should cancel
+      if (isLoading) return
+      onSubmit?.()
     }
     onKeyDown?.(e)
   }

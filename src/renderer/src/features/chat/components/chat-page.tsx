@@ -25,6 +25,7 @@ export function ChatPage() {
   const onSendScrollRef = useRef<(() => void) | null>(null)
 
   const handleSubmit = () => {
+    if (!canSend) return
     sendMessage(state.inputValue)
     onSendScrollRef.current?.()
   }
