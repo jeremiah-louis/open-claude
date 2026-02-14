@@ -33,7 +33,7 @@ export function ChatInput({
       onSubmit={onSubmit}
       className="rounded-xl border border-border bg-card p-2 shadow-sm"
     >
-      <PromptInputTextarea placeholder="Message Claude..." />
+      <PromptInputTextarea placeholder="Message Clover..." />
       <PromptInputActions className="justify-between px-2 pb-1">
         <div className="flex items-center gap-1">
           <PromptInputAction tooltip="Attach file">

@@ -6,7 +6,11 @@ import type { AppErrorModel } from "@shared/errors"
 
 const RENDER_SETTLE_MS = 100
 
-export function useChat() {
+interface UseChatOptions {
+  systemPrompt?: string
+}
+
+export function useChat(options: UseChatOptions = {}) {
   const [state, dispatch] = useReducer(chatReducer, initialChatState)
 
   // Keep a ref to the latest state so stable callbacks can read current messages
@@ -83,7 +87,7 @@ export function useChat() {
     // Track whether we've transitioned to STREAMING yet
     let hasStartedStreaming = false
 
-    const cleanup = streamMessage(history, {}, {
+    const cleanup = streamMessage(history, { system: options.systemPrompt }, {
       onChunk: (chunk) => {
         const event = chunk as {
           type: string
@@ -129,7 +133,7 @@ export function useChat() {
     })
 
     cleanupRef.current = cleanup
-  }, [])
+  }, [options.systemPrompt])
 
   const setInput = useCallback((value: string) => {
     dispatch({ type: "SET_INPUT", payload: value })
@@ -162,6 +166,8 @@ export function useChat() {
     canSend:
       (state.phase === "IDLE" || state.phase === "READY" || state.phase === "COMPOSING") &&
       state.inputValue.trim().length > 0,
+    canSendProgrammatic:
+      state.phase === "IDLE" || state.phase === "READY" || state.phase === "COMPOSING",
     canCancel: state.phase === "STREAMING" || state.phase === "WAITING",
   }
 }

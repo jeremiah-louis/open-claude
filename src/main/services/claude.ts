@@ -14,8 +14,8 @@ export interface SendMessageOptions {
   temperature?: number;
 }
 
-const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
-const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_MODEL = "claude-opus-4-6";
+const DEFAULT_MAX_TOKENS = 4096;
 
 let client: Anthropic | null = null;
 

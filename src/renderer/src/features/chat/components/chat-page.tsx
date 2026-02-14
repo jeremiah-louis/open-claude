@@ -1,14 +1,23 @@
-import React, { useRef, useMemo } from "react"
-import { AnimatePresence, motion } from "motion/react"
+import React, { useRef, useState, useEffect, useCallback } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { cn } from "@/utils"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import { MessageList } from "./message-list"
 import { ChatInput } from "./chat-input"
-import { CanvasPanel } from "./canvas-panel"
 import { useChat } from "../use-chat"
-import { useCanvas } from "../hooks/use-canvas"
+import { useStreamRouter } from "../hooks/use-stream-router"
+import { routeStream } from "../utils/stream-router"
+import { CodeEditor } from "../../simulation/components/code-editor"
+import { CircuitCanvas } from "../../simulation/components/circuit-canvas"
+import { SerialMonitor } from "../../simulation/components/serial-monitor"
+import { PipelineStatusBar } from "../../simulation/components/pipeline-status-bar"
+import { useSimulation } from "../../simulation/hooks/use-simulation"
+import { useOrchestrator } from "../../orchestrator/use-orchestrator"
+import { ARDUINO_SYSTEM_PROMPT, DEFAULT_LED_DIAGRAM } from "../../simulation/constants"
+import type { ChatPhase } from "../types"
+
+type RightTab = "code" | "preview"
 
 export function ChatPage() {
   const {
@@ -19,8 +28,9 @@ export function ChatPage() {
     dismissError,
     isLoading,
     canSend,
+    canSendProgrammatic,
     canCancel,
-  } = useChat()
+  } = useChat({ systemPrompt: ARDUINO_SYSTEM_PROMPT })
 
   const onSendScrollRef = useRef<(() => void) | null>(null)
 
@@ -30,33 +40,125 @@ export function ChatPage() {
     onSendScrollRef.current?.()
   }
 
-  // Derive the last user message for tool-call detection
-  const lastUserMessage = useMemo(() => {
-    for (let i = state.messages.length - 1; i >= 0; i--) {
-      if (state.messages[i].role === "user") {
-        return state.messages[i].content
-      }
-    }
-    return null
-  }, [state.messages])
+  // Stream router: parse streaming content into chat/code/diagram
+  const routedResult = useStreamRouter(state.streamingContent)
 
-  const {
-    isCanvasOpen,
-    closeCanvas,
-    canvasWidth,
-    onCanvasWidthChange,
-    codeBlock,
-    isStreaming: canvasIsStreaming,
-  } = useCanvas({
-    lastUserMessage,
-    streamingContent: state.streamingContent,
-    streamingMessageId: state.streamingMessageId,
-    isStreaming:
-      state.phase === "STREAMING" || state.phase === "WAITING",
+  // ── Persisted code & diagram ──
+  // The stream router only has data while streamingContent is non-empty.
+  // On STREAM_COMPLETE the reducer clears streamingContent, so the router
+  // returns empty. We persist the last routed code/diagram in state so the
+  // editor, canvas, and orchestrator still have them after the stream ends.
+  const [persistedCode, setPersistedCode] = useState("")
+  const [persistedCodeLang, setPersistedCodeLang] = useState("")
+  const [persistedDiagram, setPersistedDiagram] = useState("")
+  const [persistedCodeComplete, setPersistedCodeComplete] = useState(false)
+
+  // Update persisted values whenever the router produces content
+  useEffect(() => {
+    if (routedResult.code) {
+      setPersistedCode(routedResult.code)
+      setPersistedCodeLang(routedResult.codeLanguage)
+      setPersistedCodeComplete(routedResult.codeComplete)
+    }
+    if (routedResult.diagramJson) {
+      setPersistedDiagram(routedResult.diagramJson)
+    }
+  }, [routedResult.code, routedResult.codeLanguage, routedResult.codeComplete, routedResult.diagramJson])
+
+  // Clear persisted values when user sends a NEW message (fresh conversation turn)
+  useEffect(() => {
+    if (state.phase === "WAITING") {
+      setPersistedCode("")
+      setPersistedCodeLang("")
+      setPersistedDiagram("")
+      setPersistedCodeComplete(false)
+      setUserCode("")
+    }
+  }, [state.phase])
+
+  // Simulation
+  const simulation = useSimulation()
+
+  // Track previous chat phase for orchestrator
+  const [prevPhase, setPrevPhase] = useState<ChatPhase | null>(null)
+  const phaseRef = useRef(state.phase)
+  useEffect(() => {
+    if (phaseRef.current !== state.phase) {
+      setPrevPhase(phaseRef.current)
+      phaseRef.current = state.phase
+    }
+  }, [state.phase])
+
+  // Stable compileAndRun callback — must NOT be an inline arrow or
+  // handleCompile inside the orchestrator is recreated every render,
+  // causing the trigger effect to re-fire and exhaust retry attempts.
+  const stableCompileAndRun = useCallback(
+    async (code: string, diagram: string) => {
+      const diagramToUse = diagram || DEFAULT_LED_DIAGRAM
+      return simulation.compileAndRun(code, diagramToUse)
+    },
+    [simulation.compileAndRun],
+  )
+
+  // Orchestrator: zero-click compile-and-run pipeline
+  const { pipelinePhase, debugAttempt } = useOrchestrator({
+    chatPhase: state.phase,
+    previousChatPhase: prevPhase,
+    code: persistedCode,
+    diagramJson: persistedDiagram,
+    codeComplete: persistedCodeComplete,
+    compileAndRun: stableCompileAndRun,
+    sendMessage,
+    canSend: canSendProgrammatic,
   })
 
+  // Track user code edits (user typed into the editor after streaming)
+  const [userCode, setUserCode] = useState("")
+
+  // Determine what code to show (priority: live stream > persisted > user edit > simulation)
+  const displayCode = routedResult.code || persistedCode || userCode || simulation.state.code
+
+  // Determine what diagram to show
+  const displayDiagram = routedResult.diagramJson || persistedDiagram || simulation.state.diagramJson || ""
+
+  // Tabbed panel
+  const [activeTab, setActiveTab] = useState<RightTab>("code")
+  const [panelWidth, setPanelWidth] = useState(500)
   const isMobile = useIsMobile()
-  const canvasVisible = isCanvasOpen && codeBlock !== null
+
+  // Auto-switch tabs based on what's streaming
+  useEffect(() => {
+    if (routedResult.activeSegment === "code") {
+      setActiveTab("code")
+    }
+    if (routedResult.activeSegment === "diagram") {
+      setActiveTab("preview")
+    }
+  }, [routedResult.activeSegment])
+
+  // Auto-switch to preview when simulation starts running
+  useEffect(() => {
+    if (simulation.state.phase === "RUNNING") {
+      setActiveTab("preview")
+    }
+  }, [simulation.state.phase])
+
+  // Panel is open when there's code or diagram content
+  const panelOpen = !!(displayCode || displayDiagram)
+
+  // Manual simulation controls
+  const handleStop = () => simulation.stop()
+  const handleRun = () => {
+    const codeToRun = userCode || persistedCode || simulation.state.code
+    const diagramToUse = persistedDiagram || simulation.state.diagramJson || DEFAULT_LED_DIAGRAM
+    if (codeToRun) {
+      simulation.compileAndRun(codeToRun, diagramToUse)
+    }
+  }
+
+  // Streaming state for code editor
+  const isCodeStreaming =
+    state.phase === "STREAMING" && routedResult.activeSegment === "code"
 
   return (
     <TooltipProvider>
@@ -67,21 +169,27 @@ export function ChatPage() {
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
 
-        {/* Horizontal split: chat + canvas */}
+        {/* Horizontal split: chat + tabbed panel */}
         <div className="flex-1 flex flex-row min-h-0">
           {/* Chat column */}
           <div className="flex-1 min-w-0 flex flex-col">
             <div
               className={cn(
                 "flex-1 flex flex-col w-full px-4 pb-4 min-h-0",
-                !(canvasVisible && !isMobile) && "max-w-2xl mx-auto",
+                !(panelOpen && !isMobile) && "max-w-2xl mx-auto",
               )}
             >
               <MessageList
-                messages={state.messages}
+                messages={state.messages.map((msg) =>
+                  msg.role === "assistant" && msg.status === "complete"
+                    ? { ...msg, content: routeStream(msg.content).chatText }
+                    : msg,
+                )}
                 phase={state.phase}
                 streamingMessageId={state.streamingMessageId}
-                streamingContent={state.streamingContent}
+                streamingContent={
+                  state.phase === "STREAMING" ? routedResult.chatText : state.streamingContent
+                }
                 onSendScrollRef={onSendScrollRef}
               />
 
@@ -98,6 +206,9 @@ export function ChatPage() {
                 </div>
               )}
 
+              {/* Pipeline status bar */}
+              <PipelineStatusBar phase={pipelinePhase} debugAttempt={debugAttempt} />
+
               <ChatInput
                 value={state.inputValue}
                 onValueChange={setInput}
@@ -110,52 +221,198 @@ export function ChatPage() {
             </div>
           </div>
 
-          {/* Desktop: resizable sidebar */}
+          {/* Desktop: resizable sidebar with tabs */}
           {!isMobile && (
             <ResizableSidebar
-              isOpen={canvasVisible}
-              onClose={closeCanvas}
-              width={canvasWidth}
-              onWidthChange={onCanvasWidthChange}
+              isOpen={panelOpen}
+              onClose={() => {}}
+              width={panelWidth}
+              onWidthChange={setPanelWidth}
               side="right"
               minWidth={300}
               maxWidth={typeof window !== "undefined" ? window.innerWidth * 0.7 : 900}
               showResizeTooltip
               className="border-l border-border"
             >
-              {codeBlock && (
-                <CanvasPanel
-                  codeBlock={codeBlock}
-                  isStreaming={canvasIsStreaming}
-                  onClose={closeCanvas}
-                />
-              )}
+              <TabbedPanel
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                code={displayCode}
+                isCodeStreaming={isCodeStreaming}
+                onCodeChange={setUserCode}
+                diagramJson={displayDiagram}
+                simulationPhase={simulation.state.phase}
+                serialOutput={simulation.state.serialOutput}
+                serialWrite={simulation.serialWrite}
+                registerElementRef={simulation.registerElementRef}
+                onStop={handleStop}
+                onRun={handleRun}
+              />
             </ResizableSidebar>
           )}
         </div>
 
-        {/* Mobile: full-screen overlay */}
-        {isMobile && (
-          <AnimatePresence>
-            {canvasVisible && codeBlock && (
-              <motion.div
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="fixed inset-0 z-50 bg-background pt-10"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-              >
-                <CanvasPanel
-                  codeBlock={codeBlock}
-                  isStreaming={canvasIsStreaming}
-                  onClose={closeCanvas}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Mobile: show tab buttons at bottom when panel content exists */}
+        {isMobile && panelOpen && (
+          <div className="border-t border-border">
+            <TabbedPanel
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              code={displayCode}
+              isCodeStreaming={isCodeStreaming}
+              onCodeChange={setUserCode}
+              diagramJson={displayDiagram}
+              simulationPhase={simulation.state.phase}
+              serialOutput={simulation.state.serialOutput}
+              serialWrite={simulation.serialWrite}
+              registerElementRef={simulation.registerElementRef}
+              onStop={handleStop}
+              onRun={handleRun}
+            />
+          </div>
         )}
       </div>
     </TooltipProvider>
+  )
+}
+
+// -- Tabbed Panel Component --
+
+interface TabbedPanelProps {
+  activeTab: RightTab
+  onTabChange: (tab: RightTab) => void
+  code: string
+  isCodeStreaming: boolean
+  onCodeChange: (code: string) => void
+  diagramJson: string
+  simulationPhase: import("../../simulation/types").SimulationPhase
+  serialOutput: string
+  serialWrite: (data: string) => void
+  registerElementRef: (id: string, el: HTMLElement | null) => void
+  onStop: () => void
+  onRun: () => void
+}
+
+function TabbedPanel({
+  activeTab,
+  onTabChange,
+  code,
+  isCodeStreaming,
+  onCodeChange,
+  diagramJson,
+  simulationPhase,
+  serialOutput,
+  serialWrite,
+  registerElementRef,
+  onStop,
+  onRun,
+}: TabbedPanelProps) {
+  const isRunning = simulationPhase === "RUNNING" || simulationPhase === "COMPILING" || simulationPhase === "LOADING"
+  const canRun = simulationPhase === "STOPPED" || simulationPhase === "IDLE" || simulationPhase === "COMPILE_ERROR"
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Tab bar */}
+      <div className="shrink-0 flex items-center border-b border-border bg-muted/30 px-2 py-1.5">
+        <div className="flex items-center bg-background/80 rounded-lg p-0.5">
+          <TabButton
+            active={activeTab === "preview"}
+            onClick={() => onTabChange("preview")}
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            }
+          />
+          <TabButton
+            active={activeTab === "code"}
+            onClick={() => onTabChange("code")}
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+                <line x1="14" y1="4" x2="10" y2="20" />
+              </svg>
+            }
+          />
+        </div>
+
+        {/* Simulation controls */}
+        <div className="ml-auto flex items-center gap-1 pr-2">
+          {isRunning && (
+            <button
+              onClick={onStop}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-destructive-foreground bg-destructive/90 hover:bg-destructive transition-colors active:scale-95"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <rect width="10" height="10" rx="1" />
+              </svg>
+              Stop
+            </button>
+          )}
+          {canRun && (
+            <button
+              onClick={onRun}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-primary-foreground bg-primary/90 hover:bg-primary transition-colors active:scale-95"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <polygon points="0,0 10,5 0,10" />
+              </svg>
+              Run
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tab content — both panels stay mounted to avoid destroy/recreate cycles */}
+      <div className="flex-1 min-h-0 relative">
+        <div className={cn("absolute inset-0", activeTab !== "code" && "invisible pointer-events-none")}>
+          <CodeEditor
+            code={code}
+            isStreaming={isCodeStreaming}
+            onCodeChange={onCodeChange}
+          />
+        </div>
+        <div className={cn("absolute inset-0 flex flex-col", activeTab !== "preview" && "invisible pointer-events-none")}>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CircuitCanvas
+              diagramJson={diagramJson}
+              simulationPhase={simulationPhase}
+              registerElementRef={registerElementRef}
+            />
+          </div>
+          <SerialMonitor
+            output={serialOutput}
+            onSend={serialWrite}
+            isRunning={simulationPhase === "RUNNING"}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "p-1.5 rounded-md transition-colors",
+        active
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {icon}
+    </button>
   )
 }
