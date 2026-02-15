@@ -8,6 +8,13 @@ Clover is a desktop application that bridges the gap between natural language an
 
 Built with Electron, React, and Claude AI (Anthropic), powered by [avr8js](https://github.com/nicschumann/avr8js) for cycle-accurate AVR simulation and [Wokwi Elements](https://github.com/nicschumann/wokwi-elements) for circuit visualization.
 
+---
+
+## Demo
+  <img src="./resources/agent.gif" alt="Clover demo — describing a project and seeing it simulated" width="600" />
+
+---
+
 ## Problem Statement
 
 Getting started with hardware and electronics is unnecessarily complex. Beginners and even junior engineers face steep barriers such as understanding circuit design, configuring microcontrollers, writing correct firmware, and setting up physical components before they can see any working result. This complexity leads to a high drop-off rate among people interested in hardware, slowing learning, experimentation, and innovation. There is currently no simple, unified tool that translates high-level intent into working, testable hardware systems while also guiding users through both simulation and real-world setup.
