@@ -8,12 +8,8 @@ Clover is a desktop application that bridges the gap between natural language an
 
 Built with Electron, React, and Claude AI (Anthropic), powered by [avr8js](https://github.com/nicschumann/avr8js) for cycle-accurate AVR simulation and [Wokwi Elements](https://github.com/nicschumann/wokwi-elements) for circuit visualization.
 
----
-
 ## Demo
   <img src="./resources/agent.gif" alt="Clover demo — describing a project and seeing it simulated" width="600" />
-
----
 
 ## Problem Statement
 
