@@ -14,6 +14,8 @@ interface ChatInputProps {
   isLoading: boolean
   canSend: boolean
   canCancel: boolean
+  pipelinePhase?: "idle" | "compiling" | "running" | "auto-debugging" | "error"
+  debugAttempt?: number
 }
 
 export function ChatInput({
@@ -24,6 +26,8 @@ export function ChatInput({
   isLoading,
   canSend,
   canCancel,
+  pipelinePhase = "idle",
+  debugAttempt = 0,
 }: ChatInputProps) {
   return (
     <PromptInput
@@ -31,6 +35,8 @@ export function ChatInput({
       onValueChange={onValueChange}
       isLoading={isLoading}
       onSubmit={onSubmit}
+      pipelinePhase={pipelinePhase}
+      debugAttempt={debugAttempt}
       className="rounded-xl border border-border bg-card p-2 shadow-sm"
     >
       <PromptInputTextarea placeholder="Message Clover..." />

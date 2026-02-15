@@ -2,17 +2,19 @@ import React, { useRef, useState, useEffect } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { cn } from "@/utils"
-import { Eye, Code } from "lucide-react"
+import { Eye, Code, RotateCw } from "lucide-react"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import { MessageList } from "./message-list"
 import { ChatInput } from "./chat-input"
 import { useChat } from "../use-chat"
 import { useStreamRouter } from "../hooks/use-stream-router"
 import { routeStream } from "../utils/stream-router"
+import { generateTitle } from "../services/claude"
+import { ChatHistorySidebar } from "./chat-history-sidebar"
+import { ChatLanding } from "./chat-landing"
 import { CodeEditor } from "../../simulation/components/code-editor"
 import { CircuitCanvas } from "../../simulation/components/circuit-canvas"
 import { SerialMonitor } from "../../simulation/components/serial-monitor"
-import { PipelineStatusBar } from "../../simulation/components/pipeline-status-bar"
 import { useSimulation } from "../../simulation/hooks/use-simulation"
 import { useOrchestrator } from "../../orchestrator/use-orchestrator"
 import { ARDUINO_SYSTEM_PROMPT, DEFAULT_LED_DIAGRAM } from "../../simulation/constants"
@@ -20,7 +22,11 @@ import type { ChatPhase } from "../types"
 
 type RightTab = "code" | "preview"
 
-export function ChatPage() {
+interface ChatPageProps {
+  onNavigateToSettings?: () => void
+}
+
+export function ChatPage({ onNavigateToSettings }: ChatPageProps) {
   const {
     state,
     sendMessage,
@@ -74,6 +80,7 @@ export function ChatPage() {
       setPersistedDiagram("")
       setPersistedCodeComplete(false)
       setUserCode("")
+      setCodeDirty(false)
     }
   }, [state.phase])
 
@@ -108,6 +115,12 @@ export function ChatPage() {
 
   // Track user code edits (user typed into the editor after streaming)
   const [userCode, setUserCode] = useState("")
+  const [codeDirty, setCodeDirty] = useState(false)
+
+  const handleCodeChange = (code: string) => {
+    setUserCode(code)
+    setCodeDirty(true)
+  }
 
   // Determine what code to show (priority: live stream > persisted > user edit > simulation)
   const displayCode = routedResult.code || persistedCode || userCode || simulation.state.code
@@ -137,8 +150,40 @@ export function ChatPage() {
     }
   }, [simulation.state.phase])
 
+  // Session title (AI-generated from first user message, one-time)
+  const [sessionTitle, setSessionTitle] = useState("")
+  const [isTitleStreaming, setIsTitleStreaming] = useState(false)
+  const titleGeneratedRef = useRef(false)
+
+  useEffect(() => {
+    if (titleGeneratedRef.current) return
+    const firstUserMsg = state.messages.find((m) => m.role === "user")
+    if (!firstUserMsg) return
+    titleGeneratedRef.current = true
+    let cancelled = false
+    generateTitle(firstUserMsg.content)
+      .then((title) => {
+        if (cancelled || !title) return
+        setIsTitleStreaming(true)
+        let i = 0
+        const id = setInterval(() => {
+          i++
+          setSessionTitle(title.slice(0, i))
+          if (i >= title.length) {
+            clearInterval(id)
+            setIsTitleStreaming(false)
+          }
+        }, 30)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [state.messages])
+
   // Panel is open when there's code or diagram content
   const panelOpen = !!(displayCode || displayDiagram)
+
+  // Empty state: no messages yet
+  const isEmpty = state.messages.length === 0 && state.phase === "IDLE"
 
   // Manual simulation controls
   const handleStop = () => simulation.stop()
@@ -146,8 +191,14 @@ export function ChatPage() {
     const codeToRun = userCode || persistedCode || simulation.state.code
     const diagramToUse = persistedDiagram || simulation.state.diagramJson || DEFAULT_LED_DIAGRAM
     if (codeToRun) {
+      setCodeDirty(false)
       simulation.compileAndRun(codeToRun, diagramToUse)
     }
+  }
+  const handleRerun = () => {
+    simulation.stop()
+    // Small delay so the stop completes before re-running
+    setTimeout(handleRun, 50)
   }
 
   // Streaming state for code editor
@@ -159,60 +210,80 @@ export function ChatPage() {
       <div className="h-dvh flex flex-col bg-background text-foreground">
         {/* Title bar drag region */}
         <div
-          className="shrink-0 h-10"
+          className="shrink-0 h-10 border-b border-border"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
 
-        {/* Horizontal split: chat + tabbed panel */}
+        {/* Horizontal split: sidebar + chat + tabbed panel */}
         <div className="flex-1 flex flex-row min-h-0">
+          {/* Left sidebar: icon rail + chat history */}
+          <ChatHistorySidebar onNavigateToSettings={onNavigateToSettings} />
+
           {/* Chat column */}
           <div className="flex-1 min-w-0 flex flex-col">
-            <div
-              className={cn(
-                "flex-1 flex flex-col w-full px-4 pb-4 min-h-0",
-                !(panelOpen && !isMobile) && "max-w-2xl mx-auto",
-              )}
-            >
-              <MessageList
-                messages={state.messages.map((msg) =>
-                  msg.role === "assistant" && msg.status === "complete"
-                    ? { ...msg, content: routeStream(msg.content).chatText }
-                    : msg,
-                )}
-                phase={state.phase}
-                streamingMessageId={state.streamingMessageId}
-                streamingContent={
-                  state.phase === "STREAMING" ? routedResult.chatText : state.streamingContent
-                }
-                onSendScrollRef={onSendScrollRef}
-              />
-
-              {/* Error banner */}
-              {state.phase === "ERROR" && state.error && (
-                <div className="flex items-center gap-2 mb-2 px-3 py-2 text-sm text-destructive bg-destructive/10 rounded-lg">
-                  <span className="flex-1">{state.error}</span>
-                  <button
-                    onClick={dismissError}
-                    className="shrink-0 text-xs font-medium underline underline-offset-2 hover:no-underline"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {/* Pipeline status bar */}
-              <PipelineStatusBar phase={pipelinePhase} debugAttempt={debugAttempt} />
-
-              <ChatInput
+            {isEmpty ? (
+              <ChatLanding
                 value={state.inputValue}
                 onValueChange={setInput}
                 onSubmit={handleSubmit}
                 onCancel={cancelStreaming}
+                onSendPrompt={(prompt) => {
+                  sendMessage(prompt)
+                  onSendScrollRef.current?.()
+                }}
                 isLoading={isLoading}
                 canSend={canSend}
                 canCancel={canCancel}
+                pipelinePhase={pipelinePhase}
+                debugAttempt={debugAttempt}
               />
-            </div>
+            ) : (
+              <div
+                className={cn(
+                  "flex-1 flex flex-col w-full px-6 pb-4 min-h-0",
+                  !(panelOpen && !isMobile) && "max-w-2xl mx-auto",
+                )}
+              >
+                <MessageList
+                  messages={state.messages.map((msg) =>
+                    msg.role === "assistant" && msg.status === "complete"
+                      ? { ...msg, content: routeStream(msg.content).chatText }
+                      : msg,
+                  )}
+                  phase={state.phase}
+                  streamingMessageId={state.streamingMessageId}
+                  streamingContent={
+                    state.phase === "STREAMING" ? routedResult.chatText : state.streamingContent
+                  }
+                  onSendScrollRef={onSendScrollRef}
+                />
+
+                {/* Error banner */}
+                {state.phase === "ERROR" && state.error && (
+                  <div className="flex items-center gap-2 mb-2 px-3 py-2 text-sm text-destructive bg-destructive/10 rounded-lg">
+                    <span className="flex-1">{state.error}</span>
+                    <button
+                      onClick={dismissError}
+                      className="shrink-0 text-xs font-medium underline underline-offset-2 hover:no-underline"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                <ChatInput
+                  value={state.inputValue}
+                  onValueChange={setInput}
+                  onSubmit={handleSubmit}
+                  onCancel={cancelStreaming}
+                  isLoading={isLoading}
+                  canSend={canSend}
+                  canCancel={canCancel}
+                  pipelinePhase={pipelinePhase}
+                  debugAttempt={debugAttempt}
+                />
+              </div>
+            )}
           </div>
 
           {/* Desktop: resizable sidebar with tabs */}
@@ -233,14 +304,19 @@ export function ChatPage() {
                 onTabChange={setActiveTab}
                 code={displayCode}
                 isCodeStreaming={isCodeStreaming}
-                onCodeChange={setUserCode}
+                onCodeChange={handleCodeChange}
                 diagramJson={displayDiagram}
                 simulationPhase={simulation.state.phase}
                 serialOutput={simulation.state.serialOutput}
                 serialWrite={simulation.serialWrite}
                 registerElementRef={simulation.registerElementRef}
+                elementRefs={simulation.elementRefs}
                 onStop={handleStop}
                 onRun={handleRun}
+                onRerun={handleRerun}
+                codeDirty={codeDirty}
+                sessionTitle={sessionTitle}
+                isTitleStreaming={isTitleStreaming}
               />
             </ResizableSidebar>
           )}
@@ -254,14 +330,19 @@ export function ChatPage() {
               onTabChange={setActiveTab}
               code={displayCode}
               isCodeStreaming={isCodeStreaming}
-              onCodeChange={setUserCode}
+              onCodeChange={handleCodeChange}
               diagramJson={displayDiagram}
               simulationPhase={simulation.state.phase}
               serialOutput={simulation.state.serialOutput}
               serialWrite={simulation.serialWrite}
               registerElementRef={simulation.registerElementRef}
+              elementRefs={simulation.elementRefs}
               onStop={handleStop}
               onRun={handleRun}
+              onRerun={handleRerun}
+              codeDirty={codeDirty}
+              sessionTitle={sessionTitle}
+              isTitleStreaming={isTitleStreaming}
             />
           </div>
         )}
@@ -283,8 +364,13 @@ interface TabbedPanelProps {
   serialOutput: string
   serialWrite: (data: string) => void
   registerElementRef: (id: string, el: HTMLElement | null) => void
+  elementRefs: Map<string, HTMLElement>
   onStop: () => void
   onRun: () => void
+  onRerun: () => void
+  codeDirty: boolean
+  sessionTitle: string
+  isTitleStreaming: boolean
 }
 
 function TabbedPanel({
@@ -298,8 +384,13 @@ function TabbedPanel({
   serialOutput,
   serialWrite,
   registerElementRef,
+  elementRefs,
   onStop,
   onRun,
+  onRerun,
+  codeDirty,
+  sessionTitle,
+  isTitleStreaming,
 }: TabbedPanelProps) {
   const isRunning = simulationPhase === "RUNNING" || simulationPhase === "COMPILING" || simulationPhase === "LOADING"
   const canRun = simulationPhase === "STOPPED" || simulationPhase === "IDLE" || simulationPhase === "COMPILE_ERROR"
@@ -333,29 +424,51 @@ function TabbedPanel({
           </button>
         </div>
 
+        {/* Session title */}
+        {sessionTitle && (
+          <div className="flex-1 min-w-0 px-2 overflow-hidden">
+            <p className="text-sm font-medium text-foreground text-center truncate">
+              {sessionTitle}
+              {isTitleStreaming && <span className="inline-block w-[2px] h-[1em] bg-foreground align-text-bottom ml-0.5 animate-pulse" />}
+            </p>
+          </div>
+        )}
+
         {/* Simulation controls */}
         <div className="ml-auto flex items-center gap-1 pr-2">
-          {isRunning && (
+          {codeDirty ? (
             <button
-              onClick={onStop}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-destructive-foreground bg-destructive/90 hover:bg-destructive transition-colors active:scale-95"
+              onClick={onRerun}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-amber-50 bg-amber-500/90 hover:bg-amber-500 transition-colors active:scale-95"
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                <rect width="10" height="10" rx="1" />
-              </svg>
-              Stop
+              <RotateCw className="w-3.5 h-3.5" />
+              Re-run
             </button>
-          )}
-          {canRun && (
-            <button
-              onClick={onRun}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-primary-foreground bg-primary/90 hover:bg-primary transition-colors active:scale-95"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                <polygon points="0,0 10,5 0,10" />
-              </svg>
-              Run
-            </button>
+          ) : (
+            <>
+              {isRunning && (
+                <button
+                  onClick={onStop}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-destructive-foreground bg-destructive/90 hover:bg-destructive transition-colors active:scale-95"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                    <rect width="10" height="10" rx="1" />
+                  </svg>
+                  Stop
+                </button>
+              )}
+              {canRun && (
+                <button
+                  onClick={onRun}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-primary-foreground bg-primary/90 hover:bg-primary transition-colors active:scale-95"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                    <polygon points="0,0 10,5 0,10" />
+                  </svg>
+                  Run
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -375,6 +488,7 @@ function TabbedPanel({
               diagramJson={diagramJson}
               simulationPhase={simulationPhase}
               registerElementRef={registerElementRef}
+              elementRefs={elementRefs}
             />
           </div>
           <SerialMonitor

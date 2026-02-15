@@ -91,7 +91,7 @@ export function ApiKeyOnboardingPage({
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
       {/* Draggable title bar area */}
       <div
-        className="fixed top-0 left-0 right-0 h-10"
+        className="fixed top-0 left-0 right-0 h-10 border-b border-border"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 

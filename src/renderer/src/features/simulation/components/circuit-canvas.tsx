@@ -1,20 +1,55 @@
-import { useEffect, useRef, useMemo } from "react"
+import { useCallback, useEffect, useRef, useMemo, useState } from "react"
+import { ZoomIn, ZoomOut } from "lucide-react"
 import "../register-wokwi-elements"
 import type { DiagramJson, DiagramPart } from "../types"
 import type { SimulationPhase } from "../types"
+import { buildPinPositionMap, resolveConnections } from "../utils/pin-positions"
+import { WireOverlay } from "./wire-overlay"
+
+const ZOOM_MIN = 0.25
+const ZOOM_MAX = 3
+const ZOOM_STEP = 0.25
+
+/** Known element sizes (width × height in CSS px) */
+const ELEMENT_SIZES: Record<string, [number, number]> = {
+  "wokwi-arduino-uno": [274, 202],
+  "wokwi-led": [40, 50],
+  "wokwi-buzzer": [64, 90],
+  "wokwi-pushbutton": [67, 45],
+}
+const DEFAULT_SIZE: [number, number] = [80, 80]
 
 interface CircuitCanvasProps {
   diagramJson: string
   simulationPhase: SimulationPhase
   registerElementRef: (id: string, el: HTMLElement | null) => void
+  elementRefs: Map<string, HTMLElement>
 }
 
 export function CircuitCanvas({
   diagramJson,
   simulationPhase,
   registerElementRef,
+  elementRefs,
 }: CircuitCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [zoom, setZoom] = useState(1)
+
+  const zoomIn = () => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP))
+  const zoomOut = () => setZoom((z) => Math.max(ZOOM_MIN, z - ZOOM_STEP))
+  const zoomReset = () => setZoom(1)
+
+  // Counter bumped on each ref registration to trigger pin position recalculation
+  const [refVersion, setRefVersion] = useState(0)
+
+  // Wrap registerElementRef to bump refVersion on each registration
+  const handleRegisterRef = useCallback(
+    (id: string, el: HTMLElement | null) => {
+      registerElementRef(id, el)
+      setRefVersion((v) => v + 1)
+    },
+    [registerElementRef],
+  )
 
   const diagram: DiagramJson | null = useMemo(() => {
     if (!diagramJson) return null
@@ -25,7 +60,7 @@ export function CircuitCanvas({
     }
   }, [diagramJson])
 
-  // Calculate bounding box for auto-centering
+  // Calculate bounding box for auto-centering with known element sizes
   const { parts, minX, minY, scaleWidth, scaleHeight } = useMemo(() => {
     if (!diagram?.parts?.length) {
       return { parts: [] as DiagramPart[], minX: 0, minY: 0, scaleWidth: 400, scaleHeight: 300 }
@@ -33,11 +68,11 @@ export function CircuitCanvas({
 
     let xMin = Infinity, yMin = Infinity, xMax = -Infinity, yMax = -Infinity
     for (const part of diagram.parts) {
+      const [w, h] = ELEMENT_SIZES[part.type] ?? DEFAULT_SIZE
       xMin = Math.min(xMin, part.left)
       yMin = Math.min(yMin, part.top)
-      // Approximate element size
-      xMax = Math.max(xMax, part.left + 200)
-      yMax = Math.max(yMax, part.top + 200)
+      xMax = Math.max(xMax, part.left + w)
+      yMax = Math.max(yMax, part.top + h)
     }
 
     return {
@@ -48,6 +83,26 @@ export function CircuitCanvas({
       scaleHeight: yMax - yMin + 40,
     }
   }, [diagram])
+
+  // Compute pin positions from element refs
+  const pinPositionMap = useMemo(() => {
+    if (!parts.length) return new Map<string, { x: number; y: number }>()
+    return buildPinPositionMap(parts, elementRefs, minX, minY)
+  }, [parts, refVersion, minX, minY, elementRefs])
+
+  // Wokwi custom elements (lit-element) need a render cycle before pinInfo
+  // is available. Re-trigger pin computation after elements have initialized.
+  useEffect(() => {
+    if (!parts.length) return
+    const timer = setTimeout(() => setRefVersion((v) => v + 1), 150)
+    return () => clearTimeout(timer)
+  }, [parts])
+
+  // Resolve connections to absolute coordinates
+  const resolvedConnections = useMemo(() => {
+    if (!diagram?.connections?.length) return []
+    return resolveConnections(diagram.connections, pinPositionMap)
+  }, [diagram?.connections, pinPositionMap])
 
   if (!diagram || !parts.length) {
     return (
@@ -63,30 +118,64 @@ export function CircuitCanvas({
     <div ref={containerRef} className="h-full w-full relative overflow-auto bg-[#f0f0f5] dark:bg-[#1a1a2e] p-4">
       {/* Status overlay */}
       {simulationPhase !== "IDLE" && (
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-30">
           <StatusBadge phase={simulationPhase} />
         </div>
       )}
 
+      {/* Zoom controls */}
+      <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 rounded-lg border border-border bg-background/90 backdrop-blur-sm shadow-sm p-1">
+        <button
+          onClick={zoomOut}
+          disabled={zoom <= ZOOM_MIN}
+          className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Zoom out"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </button>
+        <button
+          onClick={zoomReset}
+          className="px-1.5 py-1 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground text-xs font-medium min-w-[3rem] text-center tabular-nums transition-colors"
+          title="Reset zoom"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX}
+          className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Zoom in"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </button>
+      </div>
+
       {/* Parts container */}
       <div
-        className="relative"
+        className="relative origin-top-left transition-transform duration-150"
         style={{
           minWidth: scaleWidth,
           minHeight: scaleHeight,
+          transform: `scale(${zoom})`,
         }}
       >
-        {parts
-          .filter((p) => p.type !== "wokwi-arduino-uno")
-          .map((part) => (
-            <WokwiElement
-              key={part.id}
-              part={part}
-              offsetX={minX}
-              offsetY={minY}
-              registerRef={registerElementRef}
-            />
-          ))}
+        {/* Wokwi elements */}
+        {parts.map((part) => (
+          <WokwiElement
+            key={part.id}
+            part={part}
+            offsetX={minX}
+            offsetY={minY}
+            registerRef={handleRegisterRef}
+          />
+        ))}
+
+        {/* z-20: Wire overlay */}
+        <WireOverlay
+          connections={resolvedConnections}
+          width={scaleWidth}
+          height={scaleHeight}
+        />
       </div>
     </div>
   )
@@ -141,6 +230,7 @@ function WokwiElement({
       style={{
         left: part.left - offsetX,
         top: part.top - offsetY,
+        zIndex: 10,
       }}
     />
   )

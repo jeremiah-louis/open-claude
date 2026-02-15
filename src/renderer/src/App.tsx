@@ -1,21 +1,23 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { ApiKeyOnboardingPage } from "./features/onboarding/api-key-onboarding-page";
-import { SelectDirectoryPage } from "./features/onboarding/select-directory-page";
 import { ChatPage } from "./features/chat";
+import { SettingsPage } from "./features/settings/settings-page";
 import { Toaster } from "sonner";
 
-// Set to true to show the chat demo page
-const SHOW_DEMO = true;
+// Set to true to skip onboarding and show the chat page directly
+const SHOW_DEMO = false;
 
-type OnboardingStep = "loading" | "api-key" | "select-directory" | "done";
+type OnboardingStep = "loading" | "api-key" | "done";
+type CurrentPage = "chat" | "settings";
 
 const App = () => {
   const [step, setStep] = useState<OnboardingStep>("loading");
+  const [currentPage, setCurrentPage] = useState<CurrentPage>("chat");
 
   useEffect(() => {
     window.claude.hasStoredApiKey().then((result) => {
       if (result.success && result.data) {
-        setStep("select-directory");
+        setStep("done");
       } else {
         setStep("api-key");
       }
@@ -35,29 +37,15 @@ const App = () => {
       <Toaster richColors />
       {step === "api-key" && (
         <ApiKeyOnboardingPage
-          onComplete={() => setStep("select-directory")}
+          onComplete={() => setStep("done")}
         />
       )}
 
-      {step === "select-directory" && (
-        <SelectDirectoryPage
-          onComplete={(dir) => {
-            console.log("Selected directory:", dir);
-            setStep("done");
-          }}
-        />
+      {step === "done" && currentPage === "chat" && (
+        <ChatPage onNavigateToSettings={() => setCurrentPage("settings")} />
       )}
-
-      {step === "done" && (
-        <div className="h-dvh flex flex-col bg-background text-foreground">
-          <div
-            className="shrink-0 h-10"
-            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-          />
-          <div className="flex-1 flex items-center justify-center">
-            <h1 className="text-2xl font-semibold">You're all set!</h1>
-          </div>
-        </div>
+      {step === "done" && currentPage === "settings" && (
+        <SettingsPage onNavigateToChat={() => setCurrentPage("chat")} />
       )}
     </>
   );

@@ -30,7 +30,7 @@ export function PromptInputDemo() {
       <div className="h-dvh flex flex-col bg-background text-foreground">
         {/* Title bar drag region */}
         <div
-          className="shrink-0 h-10 flex items-center justify-center"
+          className="shrink-0 h-10 border-b border-border flex items-center justify-center"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
           <span className="text-xs text-muted-foreground">

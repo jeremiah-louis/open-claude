@@ -50,7 +50,7 @@ export function SerialMonitor({ output, onSend, isRunning }: SerialMonitorProps)
         {output || <span className="text-muted-foreground">Serial output will appear here...</span>}
       </pre>
 
-      <div className="flex items-center gap-1 px-2 py-1.5 border-t border-border">
+      {/* <div className="flex items-center gap-1 px-2 py-1.5 border-t border-border">
         <input
           type="text"
           value={input}
@@ -67,7 +67,7 @@ export function SerialMonitor({ output, onSend, isRunning }: SerialMonitorProps)
         >
           Send
         </button>
-      </div>
+      </div> */}
     </div>
   )
 }

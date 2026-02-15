@@ -137,9 +137,10 @@ export class ClaudeApiError extends AppError {
    * HTTP status codes to the appropriate ErrorCode automatically.
    */
   static from(error: unknown, path: string): ClaudeApiError {
-    // Anthropic SDK errors expose a `status` property
-    const raw = error as { status?: number; message?: string };
-    const message = raw?.message ?? "Unknown Claude API error";
+    // Anthropic SDK errors expose a `status` property and nested error body
+    const raw = error as { status?: number; message?: string; error?: { error?: { message?: string } } };
+    // Prefer the nested human-readable message from the API response body
+    const message = raw?.error?.error?.message ?? raw?.message ?? "Unknown Claude API error";
 
     let code: ErrorCode;
     switch (raw?.status) {

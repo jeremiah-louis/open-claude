@@ -17,6 +17,8 @@ import React, {
   forwardRef,
 } from "react"
 
+type PipelinePhase = "idle" | "compiling" | "running" | "auto-debugging" | "error"
+
 type PromptInputContextType = {
   isLoading: boolean
   value: string
@@ -29,6 +31,8 @@ type PromptInputContextType = {
     name: string
   } | null
   contextItems?: React.ReactNode
+  pipelinePhase?: PipelinePhase
+  debugAttempt?: number
 }
 
 const PromptInputContext = createContext<PromptInputContextType>({
@@ -40,6 +44,8 @@ const PromptInputContext = createContext<PromptInputContextType>({
   disabled: false,
   selectedVariant: null,
   contextItems: null,
+  pipelinePhase: "idle",
+  debugAttempt: 0,
 })
 
 function usePromptInput() {
@@ -63,7 +69,28 @@ type PromptInputProps = {
     name: string
   } | null
   contextItems?: React.ReactNode
+  pipelinePhase?: PipelinePhase
+  debugAttempt?: number
 }
+
+const PIPELINE_STATUS_CONFIG: Record<string, { bg: string; label: string; beam: boolean }> = {
+  compiling: { bg: "bg-yellow-300", label: "Compiling...", beam: true },
+  running: { bg: "bg-green-300", label: "Simulation running", beam: false },
+  "auto-debugging": { bg: "bg-orange-300", label: "Auto-debugging", beam: true },
+  error: { bg: "bg-red-300", label: "Compilation failed", beam: false },
+}
+
+const BEAM_KEYFRAMES = `
+@keyframes pipeline-beam {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes pipeline-beam {
+    0%, 100% { transform: translateX(0); opacity: 0; }
+  }
+}
+`
 
 function PromptInput({
   className,
@@ -75,6 +102,8 @@ function PromptInput({
   children,
   selectedVariant,
   contextItems,
+  pipelinePhase = "idle",
+  debugAttempt = 0,
 }: PromptInputProps) {
   const [internalValue, setInternalValue] = useState(value || "")
 
@@ -82,6 +111,11 @@ function PromptInput({
     setInternalValue(newValue)
     onValueChange?.(newValue)
   }
+
+  const statusConfig = pipelinePhase !== "idle" ? PIPELINE_STATUS_CONFIG[pipelinePhase] : null
+  const statusLabel = pipelinePhase === "auto-debugging"
+    ? `Auto-debugging (${debugAttempt}/3)`
+    : statusConfig?.label
 
   return (
     <PromptInputContext.Provider
@@ -93,9 +127,46 @@ function PromptInput({
         onSubmit,
         selectedVariant,
         contextItems,
+        pipelinePhase,
+        debugAttempt,
       }}
     >
-      <div className={cn("flex flex-col gap-2", className)}>{children}</div>
+      <div className="relative">
+        {/* Inject beam keyframes once */}
+        <style dangerouslySetInnerHTML={{ __html: BEAM_KEYFRAMES }} />
+
+        {/* Stacked background status indicator — always mounted for transitions */}
+        <div
+          className={cn(
+            "absolute inset-x-2 -top-0.75 h-7 rounded-t-xl overflow-hidden",
+            statusConfig ? statusConfig.bg : "bg-transparent",
+          )}
+          style={{
+            opacity: statusConfig ? 1 : 0,
+            transform: statusConfig ? "translateY(0)" : "translateY(4px)",
+            transition: "opacity 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), background-color 200ms ease",
+            pointerEvents: statusConfig ? "auto" : "none",
+          }}
+        >
+          {/* Light beam sweep — only for active/working states */}
+          {statusConfig?.beam && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 45%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0.45) 55%, transparent 100%)",
+                animation: "pipeline-beam 1.8s cubic-bezier(0.645, 0.045, 0.355, 1) infinite",
+                willChange: "transform",
+              }}
+            />
+          )}
+        </div>
+
+        {/* Main container */}
+        <div className={cn("flex flex-col gap-2 relative z-10", className)}>
+          {children}
+        </div>
+      </div>
     </PromptInputContext.Provider>
   )
 }
