@@ -23,6 +23,14 @@ export function useSimulation() {
     dispatch({ type: "STOP" })
   }, [])
 
+  const reset = useCallback(() => {
+    wiredRef.current?.cleanup()
+    wiredRef.current = null
+    runnerRef.current?.stop()
+    runnerRef.current = null
+    dispatch({ type: "RESET" })
+  }, [])
+
   const compileAndRun = useCallback(
     async (code: string, diagramJsonStr: string) => {
       // Stop any running simulation
@@ -108,6 +116,7 @@ export function useSimulation() {
     state,
     compileAndRun,
     stop,
+    reset,
     serialWrite,
     registerElementRef,
     elementRefs: elementRefsRef.current,

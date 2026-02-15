@@ -1,11 +1,13 @@
-import React, { useState } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import {
   PanelLeft,
   CirclePlus,
   Settings,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/logo"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/utils"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import {
@@ -13,22 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-
-// Mock chat history data
-const MOCK_RECENTS = [
-  { id: "1", title: "LED Blink Project", active: true },
-  { id: "2", title: "Adding a stacked container effect", active: false },
-  { id: "3", title: "Arduino code compilation error", active: false },
-  { id: "4", title: "Clarification needed", active: false },
-]
-
-const MOCK_UNTITLED = [
-  { id: "5", title: "explain this properly to me T...", active: false },
-  { id: "6", title: "word this properly are the cir...", active: false },
-  { id: "7", title: "Circuit components and display fu...", active: false },
-  { id: "8", title: "Servo Motor Control", active: false },
-  { id: "9", title: "Serial Communication", active: false },
-]
+import type { Conversation } from "../types"
 
 interface IconRailButtonProps {
   icon: React.ElementType
@@ -54,20 +41,49 @@ function IconRailButton({ icon: Icon, label, onClick }: IconRailButtonProps) {
   )
 }
 
-// const NAV_ITEMS = [
-//   { icon: MessageSquare, label: "Chats" },
-//   { icon: FolderOpen, label: "Projects" },
-//   { icon: Component, label: "Artifacts" },
-//   { icon: Code, label: "Code" },
-// ]
-
 interface ChatHistorySidebarProps {
   onNavigateToSettings?: () => void
+  onSelectConversation?: (id: number) => void
+  onNewChat?: () => void
+  currentConversationId?: number | null
+  refreshKey?: number
 }
 
-export function ChatHistorySidebar({ onNavigateToSettings }: ChatHistorySidebarProps) {
+export function ChatHistorySidebar({
+  onNavigateToSettings,
+  onSelectConversation,
+  onNewChat,
+  currentConversationId,
+  refreshKey,
+}: ChatHistorySidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [panelWidth, setPanelWidth] = useState(260)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const list = await window.db.listConversations()
+      setConversations(list)
+    } catch (err) {
+      console.error("Failed to load conversations:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations, refreshKey])
+
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation()
+    await window.db.deleteConversation(id)
+    setConversations((prev) => prev.filter((c) => c.id !== id))
+    if (currentConversationId === id) {
+      onNewChat?.()
+    }
+  }
 
   if (isExpanded) {
     return (
@@ -102,65 +118,54 @@ export function ChatHistorySidebar({ onNavigateToSettings }: ChatHistorySidebarP
 
           {/* Nav actions */}
           <div className="px-2 flex flex-col gap-0.5">
-            <Button variant="ghost" size="sm" className="justify-start">
+            <Button variant="ghost" size="sm" className="justify-start" onClick={onNewChat}>
               <CirclePlus className="w-5 h-5" />
               <span>New chat</span>
             </Button>
-            {/* <button className="flex items-center gap-3 px-2 py-1.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-              <Search className="w-5 h-5" />
-              <span>Search</span>
-            </button> */}
           </div>
-
-          {/* Nav links */}
-          {/* <div className="px-2 mt-3 flex flex-col gap-0.5">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.label}
-                className="flex items-center gap-3 px-2 py-1.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              >
-                <item.icon className="w-5 h-5" />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </div> */}
 
           {/* Chat history */}
           <div className="flex-1 min-h-0 overflow-y-auto mt-4 px-2">
-            {/* Recents */}
-            <p className="px-2 pb-1 text-xs text-sidebar-foreground/50 font-medium">Recents</p>
-            <div className="flex flex-col gap-0.5">
-              {MOCK_RECENTS.map((item) => (
-                <button
-                  key={item.id}
-                  className={cn(
-                    "w-full text-left px-2 py-1.5 rounded-lg text-sm truncate transition-colors",
-                    item.active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/50",
-                  )}
-                >
-                  {item.title}
-                </button>
-              ))}
-            </div>
-
-            {/* Untitled */}
-            <p className="px-2 pt-4 pb-1 text-xs text-sidebar-foreground/50 font-medium">Untitled</p>
-            <div className="flex flex-col gap-0.5">
-              {MOCK_UNTITLED.map((item) => (
-                <button
-                  key={item.id}
-                  className="w-full text-left px-2 py-1.5 rounded-lg text-sm truncate text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
-                >
-                  {item.title}
-                </button>
-              ))}
-            </div>
+            {isLoading ? (
+              <div className="flex flex-col gap-2 px-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-7 w-full" />
+                ))}
+              </div>
+            ) : conversations.length === 0 ? (
+              <p className="px-2 text-sm text-sidebar-foreground/50">No conversations yet</p>
+            ) : (
+              <>
+                <p className="px-2 pb-1 text-xs text-sidebar-foreground/50 font-medium">Recents</p>
+                <div className="flex flex-col gap-0.5">
+                  {conversations.map((conv) => (
+                    <button
+                      key={conv.id}
+                      onClick={() => onSelectConversation?.(conv.id)}
+                      className={cn(
+                        "group w-full text-left px-2 py-1.5 rounded-lg text-sm truncate transition-colors flex items-center gap-1",
+                        conv.id === currentConversationId
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+                      )}
+                    >
+                      <span className="flex-1 truncate">{conv.title || "Untitled"}</span>
+                      <span
+                        role="button"
+                        onClick={(e) => handleDelete(e, conv.id)}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-sidebar-accent transition-opacity"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-sidebar-foreground/50" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Settings */}
-          <div className="shrink-0 mt-auto border-t border-sidebar-border px-2 py-2">
+          <div className="shrink-0 mt-auto px-2 py-2">
             <Button
               variant="ghost"
               size="sm"
@@ -188,6 +193,7 @@ export function ChatHistorySidebar({ onNavigateToSettings }: ChatHistorySidebarP
         <IconRailButton
           icon={CirclePlus}
           label="New chat"
+          onClick={onNewChat}
         />
       </div>
 

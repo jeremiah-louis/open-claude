@@ -11,6 +11,12 @@ export interface ChatMessage {
   error?: string
 }
 
+export interface Conversation {
+  id: number
+  title: string
+  createdAt: string
+}
+
 export type ChatPhase =
   | "IDLE"
   | "READY"
@@ -45,3 +51,4 @@ export type ChatAction =
   | { type: "DISMISS_ERROR" }
   | { type: "CANCEL_STREAMING" }
   | { type: "RESET" }
+  | { type: "LOAD_CONVERSATION"; payload: ChatMessage[] }

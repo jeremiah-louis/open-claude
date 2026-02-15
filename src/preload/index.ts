@@ -47,6 +47,19 @@ try {
     },
   });
 
+  // Database API - accessible via window.db
+  contextBridge.exposeInMainWorld("db", {
+    createConversation: (title?: string) => ipcRenderer.invoke("db:create-conversation", title),
+    listConversations: () => ipcRenderer.invoke("db:list-conversations"),
+    getMessages: (conversationId: number) => ipcRenderer.invoke("db:get-messages", conversationId),
+    addMessage: (conversationId: number, role: string, content: string) =>
+      ipcRenderer.invoke("db:add-message", conversationId, role, content),
+    updateConversationTitle: (conversationId: number, title: string) =>
+      ipcRenderer.invoke("db:update-conversation-title", conversationId, title),
+    deleteConversation: (conversationId: number) =>
+      ipcRenderer.invoke("db:delete-conversation", conversationId),
+  });
+
   // Native API - accessible via window.api
   contextBridge.exposeInMainWorld("api", {
     fs: {

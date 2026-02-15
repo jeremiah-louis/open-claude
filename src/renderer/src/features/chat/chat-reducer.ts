@@ -146,6 +146,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "RESET":
       return { ...initialChatState }
 
+    case "LOAD_CONVERSATION":
+      return {
+        ...initialChatState,
+        phase: action.payload.length > 0 ? "READY" : "IDLE",
+        messages: action.payload,
+      }
+
     default:
       return state
   }

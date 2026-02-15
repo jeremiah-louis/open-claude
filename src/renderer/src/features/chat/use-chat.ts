@@ -1,8 +1,9 @@
-import { useReducer, useCallback, useRef, useEffect } from "react"
+import { useReducer, useCallback, useRef, useEffect, useState } from "react"
 import { chatReducer, initialChatState } from "./chat-reducer"
 import { streamMessage } from "./services/claude"
 import type { ChatMessage as ServiceChatMessage } from "./services/claude"
 import type { AppErrorModel } from "@shared/errors"
+import type { ChatMessage } from "./types"
 
 const RENDER_SETTLE_MS = 100
 
@@ -20,6 +21,13 @@ export function useChat(options: UseChatOptions = {}) {
   // Ref to the stream cleanup function returned by streamMessage
   const cleanupRef = useRef<(() => void) | null>(null)
   const renderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Conversation persistence
+  const [currentConversationId, setCurrentConversationId] = useState<number | null>(null)
+  const conversationIdRef = useRef<number | null>(null)
+  conversationIdRef.current = currentConversationId
+
+  const [isLoadingConversation, setIsLoadingConversation] = useState(false)
 
   // Cleanup on unmount
   useEffect(() => {
@@ -84,6 +92,19 @@ export function useChat(options: UseChatOptions = {}) {
     // SENDING → WAITING (adds assistant placeholder, shows "Thinking...")
     dispatch({ type: "START_WAITING", payload: { messageId: assistantMessageId } })
 
+    // Persist user message to DB
+    const persistUserMessage = async () => {
+      let convId = conversationIdRef.current
+      if (!convId) {
+        const conv = await window.db.createConversation()
+        convId = conv.id
+        conversationIdRef.current = convId
+        setCurrentConversationId(convId)
+      }
+      await window.db.addMessage(convId, "user", trimmed)
+    }
+    persistUserMessage().catch(console.error)
+
     // Track whether we've transitioned to STREAMING yet
     let hasStartedStreaming = false
 
@@ -113,7 +134,18 @@ export function useChat(options: UseChatOptions = {}) {
         if (!hasStartedStreaming) {
           dispatch({ type: "START_STREAMING" })
         }
+
+        // Capture streaming content BEFORE STREAM_COMPLETE clears it.
+        // stateRef still has the pre-dispatch state at this point.
+        const finalContent = stateRef.current.streamingContent
         dispatch({ type: "STREAM_COMPLETE" })
+
+        // Persist assistant message to DB
+        const convId = conversationIdRef.current
+        if (convId && finalContent) {
+          window.db.addMessage(convId, "assistant", finalContent).catch(console.error)
+        }
+
         renderTimerRef.current = setTimeout(() => {
           dispatch({ type: "RENDER_COMPLETE" })
         }, RENDER_SETTLE_MS)
@@ -148,6 +180,39 @@ export function useChat(options: UseChatOptions = {}) {
     dispatch({ type: "RESET" })
   }, [cancelStreaming])
 
+  const startNewChat = useCallback(() => {
+    reset()
+    setCurrentConversationId(null)
+    conversationIdRef.current = null
+  }, [reset])
+
+  const loadConversation = useCallback(async (id: number) => {
+    setIsLoadingConversation(true)
+    try {
+      cancelStreaming()
+      const dbMessages = await window.db.getMessages(id)
+      const chatMessages: ChatMessage[] = dbMessages.map((m) => ({
+        id: crypto.randomUUID(),
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        status: "complete" as const,
+        createdAt: new Date(m.createdAt).getTime(),
+      }))
+      dispatch({ type: "LOAD_CONVERSATION", payload: chatMessages })
+      setCurrentConversationId(id)
+      conversationIdRef.current = id
+    } finally {
+      setIsLoadingConversation(false)
+    }
+  }, [cancelStreaming])
+
+  const updateTitle = useCallback(async (title: string) => {
+    const convId = conversationIdRef.current
+    if (convId) {
+      await window.db.updateConversationTitle(convId, title)
+    }
+  }, [])
+
   return {
     state,
     sendMessage,
@@ -155,6 +220,11 @@ export function useChat(options: UseChatOptions = {}) {
     cancelStreaming,
     dismissError,
     reset,
+    startNewChat,
+    loadConversation,
+    updateTitle,
+    currentConversationId,
+    isLoadingConversation,
     // Derived convenience values
     isStreaming: state.phase === "STREAMING",
     isWaiting: state.phase === "WAITING",

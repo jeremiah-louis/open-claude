@@ -1,5 +1,6 @@
 import { Monitor, Flame, Grid3x3, Sparkles } from "lucide-react"
 import { Logo } from "@/components/ui/logo"
+import { InteractiveGridPattern } from "@/components/ui/interactive-grid-pattern"
 import { ChatInput } from "./chat-input"
 
 const PROMPT_SUGGESTIONS = [
@@ -63,15 +64,21 @@ export function ChatLanding({
   debugAttempt,
 }: ChatLandingProps) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 pb-16">
+    <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-16 overflow-hidden">
+      <InteractiveGridPattern
+        width={20}
+        height={20}
+        squares={[80, 80]}
+        className="[mask-image:linear-gradient(to_top,white_20%,transparent_55%)]"
+      />
       {/* Greeting */}
-      <div className="mb-8 flex items-center gap-3 text-3xl font-serif font-medium text-foreground tracking-tight">
+      <div className="relative z-10 mb-8 flex items-center gap-3 text-3xl font-serif italic font-medium text-foreground tracking-tight">
         <Logo className="w-8 h-8 shrink-0" fill="currentColor" animate={false} />
         <span>{getGreeting()}, Jeremiah</span>
       </div>
 
       {/* Centered chat input */}
-      <div className="w-full max-w-2xl">
+      <div className="relative z-10 w-full max-w-2xl">
         <ChatInput
           value={value}
           onValueChange={onValueChange}
@@ -91,7 +98,7 @@ export function ChatLanding({
               key={suggestion.label}
               onClick={() => onSendPrompt(suggestion.prompt)}
               disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground border border-border rounded-full hover:text-foreground hover:border-foreground/30 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground bg-background border border-border rounded-full hover:text-foreground hover:border-foreground/30 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
             >
               <suggestion.icon className="w-4 h-4" />
               {suggestion.label}

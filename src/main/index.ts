@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { getVersions, triggerIPC } from "@/lib";
 import { GetVersionsFn } from "@shared/types";
 import { registerIpcHandlers } from "./ipc";
+import { initDatabase } from "./services/database";
 
 function createWindow(): void {
   // Create the browser window.
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window);
   });
 
+  initDatabase();
   registerIpcHandlers();
 
   createWindow();

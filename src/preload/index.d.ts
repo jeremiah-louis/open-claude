@@ -1,5 +1,19 @@
 import { GetVersionsFn } from "@shared/types";
 
+interface DbConversation {
+  id: number;
+  title: string;
+  createdAt: string;
+}
+
+interface DbMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
 // Type definition for the preload process
 declare global {
   interface Window {
@@ -17,6 +31,14 @@ declare global {
       onStreamEnd: (callback: () => void) => void;
       onStreamError: (callback: (error: unknown) => void) => void;
       removeStreamListeners: () => void;
+    };
+    db: {
+      createConversation: (title?: string) => Promise<DbConversation>;
+      listConversations: () => Promise<DbConversation[]>;
+      getMessages: (conversationId: number) => Promise<DbMessage[]>;
+      addMessage: (conversationId: number, role: string, content: string) => Promise<DbMessage>;
+      updateConversationTitle: (conversationId: number, title: string) => Promise<void>;
+      deleteConversation: (conversationId: number) => Promise<void>;
     };
   }
 }

@@ -37,6 +37,11 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps) {
     canSend,
     canSendProgrammatic,
     canCancel,
+    startNewChat,
+    loadConversation,
+    updateTitle,
+    currentConversationId,
+    isLoadingConversation,
   } = useChat({ systemPrompt: ARDUINO_SYSTEM_PROMPT })
 
   const onSendScrollRef = useRef<(() => void) | null>(null)
@@ -155,6 +160,9 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps) {
   const [isTitleStreaming, setIsTitleStreaming] = useState(false)
   const titleGeneratedRef = useRef(false)
 
+  // Sidebar refresh key — incremented when a title update completes
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
+
   useEffect(() => {
     if (titleGeneratedRef.current) return
     const firstUserMsg = state.messages.find((m) => m.role === "user")
@@ -172,12 +180,24 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps) {
           if (i >= title.length) {
             clearInterval(id)
             setIsTitleStreaming(false)
+            // Persist the title and refresh sidebar
+            updateTitle(title)
+              .then(() => setSidebarRefreshKey((k) => k + 1))
+              .catch(console.error)
           }
         }, 30)
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [state.messages])
+  }, [state.messages, updateTitle])
+
+  // Reset title state when starting a new chat or loading a conversation
+  useEffect(() => {
+    if (state.phase === "IDLE" && state.messages.length === 0) {
+      setSessionTitle("")
+      titleGeneratedRef.current = false
+    }
+  }, [state.phase, state.messages.length])
 
   // Panel is open when there's code or diagram content
   const panelOpen = !!(displayCode || displayDiagram)
@@ -205,6 +225,57 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps) {
   const isCodeStreaming =
     state.phase === "STREAMING" && routedResult.activeSegment === "code"
 
+  // Handle loading a previous conversation
+  const handleSelectConversation = async (id: number) => {
+    if (id === currentConversationId) return
+    simulation.reset()
+    setUserCode("")
+    setCodeDirty(false)
+
+    await loadConversation(id)
+
+    // Restore code/diagram from the last assistant message
+    const loadedMessages = await window.db.getMessages(id)
+    const lastAssistant = [...loadedMessages].reverse().find((m) => m.role === "assistant")
+    if (lastAssistant) {
+      const routed = routeStream(lastAssistant.content)
+      setPersistedCode(routed.code)
+      setPersistedCodeLang(routed.codeLanguage)
+      setPersistedDiagram(routed.diagramJson)
+      setPersistedCodeComplete(routed.codeComplete)
+    } else {
+      setPersistedCode("")
+      setPersistedCodeLang("")
+      setPersistedDiagram("")
+      setPersistedCodeComplete(false)
+    }
+
+    // Restore title from DB instead of re-generating
+    const conversations = await window.db.listConversations()
+    const conv = conversations.find((c) => c.id === id)
+    if (conv?.title) {
+      setSessionTitle(conv.title)
+      titleGeneratedRef.current = true
+    } else {
+      setSessionTitle("")
+      titleGeneratedRef.current = false
+    }
+  }
+
+  const handleNewChat = () => {
+    startNewChat()
+    simulation.reset()
+    setPersistedCode("")
+    setPersistedCodeLang("")
+    setPersistedDiagram("")
+    setPersistedCodeComplete(false)
+    setUserCode("")
+    setCodeDirty(false)
+    setSessionTitle("")
+    titleGeneratedRef.current = false
+    setSidebarRefreshKey((k) => k + 1)
+  }
+
   return (
     <TooltipProvider>
       <div className="h-dvh flex flex-col bg-background text-foreground">
@@ -217,11 +288,21 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps) {
         {/* Horizontal split: sidebar + chat + tabbed panel */}
         <div className="flex-1 flex flex-row min-h-0">
           {/* Left sidebar: icon rail + chat history */}
-          <ChatHistorySidebar onNavigateToSettings={onNavigateToSettings} />
+          <ChatHistorySidebar
+            onNavigateToSettings={onNavigateToSettings}
+            onSelectConversation={handleSelectConversation}
+            onNewChat={handleNewChat}
+            currentConversationId={currentConversationId}
+            refreshKey={sidebarRefreshKey}
+          />
 
           {/* Chat column */}
           <div className="flex-1 min-w-0 flex flex-col">
-            {isEmpty ? (
+            {isLoadingConversation ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground/30" />
+              </div>
+            ) : isEmpty ? (
               <ChatLanding
                 value={state.inputValue}
                 onValueChange={setInput}
@@ -501,4 +582,3 @@ function TabbedPanel({
     </div>
   )
 }
-
